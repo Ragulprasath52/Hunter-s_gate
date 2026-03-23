@@ -1,0 +1,50 @@
+{
+  "name": "solo-leveling-gym-tracker",
+  "version": "1.0.0",
+  "description": "",
+  "main": "node_modules/expo/AppEntry.js",
+  "scripts": {
+    "start": "expo start",
+    "expo:clear": "expo start --clear",
+    "install:app": "npm install",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "eas:login": "eas login",
+    "eas:configure": "eas build:configure",
+    "eas:build:android": "eas build -p android --profile preview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ragulprasath52/Hunter-s_gate.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Ragulprasath52/Hunter-s_gate/issues"
+  },
+  "homepage": "https://github.com/Ragulprasath52/Hunter-s_gate#readme",
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "^3.0.1",
+    "expo": "^55.0.8",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "react-native": "^0.84.1",
+    "@react-navigation/native": "^7.0.0",
+    "@react-navigation/bottom-tabs": "^7.0.0",
+    "@expo/vector-icons": "^14.0.0",
+    "react-native-safe-area-context": "~5.6.2",
+    "react-native-screens": "~4.23.0",
+    "react-native-gesture-handler": "~2.28.0",
+    "react-native-web": "^0.21.0",
+    "react-native-svg": "15.12.1",
+    "react-native-chart-kit": "^6.12.0",
+    "@react-native-community/slider": "4.5.5",
+    "@react-native-picker/picker": "2.11.1"
+  },
+  "devDependencies": {
+    "eas-cli": "^16.28.0"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "Solo Leveling Gym Tracker",
+    "slug": "solo-leveling-gym-tracker",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "scheme": "sololevelingym",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.sololeveling.gymtracker"
+    },
+    "android": {
+      "package": "com.sololeveling.gymtracker"
+    },
+    "web": {
+      "bundler": "metro",
+      "backgroundColor": "#0a0a0a"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "c529e492-b84a-4559-a000-c58465714894"
+      }
+    }
+  }
+}
