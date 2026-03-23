@@ -1,7 +1,7 @@
 /**
  * Web: avoid @react-native-picker/picker + community slider (often break RN-web on load).
  */
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -159,6 +159,11 @@ export default function LogScreen() {
         }
     };
 
+    const availableExercises = useMemo(() => {
+        const customs = profile?.customExercises || [];
+        return [...EXERCISES, ...customs];
+    }, [profile]);
+
     if (!profile) {
         return (
             <View style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
@@ -171,15 +176,17 @@ export default function LogScreen() {
         <View style={[styles.container, { backgroundColor: colors.background }]}>
             <FadeInView duration={400} style={{ flex: 1 }}>
                 <View style={[styles.header, { paddingTop: insets.top + 16, backgroundColor: colors.backgroundSecondary, borderBottomColor: colors.border }]}>
-                    <Text style={[styles.title, { color: colors.primary }]}>LOG WORKOUT</Text>
-                    <Text style={[styles.hint, { color: colors.textSecondary }]}>Web · pick exercise below, set intensity 1–10.</Text>
+                    <Text style={[styles.title, { color: colors.primary }]}>⟨ LOG RAID ⟩</Text>
+                    <Text style={[styles.hint, { color: colors.textSecondary }]}>Pick exercise below · set intensity 1–10</Text>
                 </View>
 
             <ScrollView style={styles.content} keyboardShouldPersistTaps="handled">
-                <View style={[styles.formCard, { backgroundColor: colors.backgroundSecondary, borderColor: colors.primary }]}>
-                    <Text style={[styles.label, { color: colors.textSecondary }]}>EXERCISE</Text>
+                <View style={[styles.formCard, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
+                    <View style={[styles.glowLineTop, { backgroundColor: colors.primary }]} />
+                    
+                    <Text style={[styles.label, { color: colors.textSecondary }]}>TARGET EXERCISE</Text>
                     <View style={styles.exerciseGrid}>
-                        {EXERCISES.map((ex) => (
+                        {availableExercises.map((ex) => (
                             <TouchableOpacity
                                 key={ex}
                                 style={[styles.exChip, { borderColor: colors.border, backgroundColor: colors.background }, exercise === ex && { borderColor: colors.primary, backgroundColor: colors.transparentPrimary }]}
@@ -196,9 +203,9 @@ export default function LogScreen() {
 
                     <View style={styles.row}>
                         <View style={styles.inputGroup}>
-                            <Text style={[styles.label, { color: colors.textSecondary }]}>WEIGHT (LBS)</Text>
+                            <Text style={[styles.label, { color: colors.textSecondary }]}>WEIGHT (KG)</Text>
                             <TextInput
-                                style={[styles.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]}
+                                style={[styles.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.primary }]}
                                 value={weight}
                                 onChangeText={setWeight}
                                 keyboardType="decimal-pad"
@@ -209,7 +216,7 @@ export default function LogScreen() {
                         <View style={styles.inputGroup}>
                             <Text style={[styles.label, { color: colors.textSecondary }]}>REPS</Text>
                             <TextInput
-                                style={[styles.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]}
+                                style={[styles.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.primary }]}
                                 value={reps}
                                 onChangeText={setReps}
                                 keyboardType="number-pad"
@@ -220,7 +227,7 @@ export default function LogScreen() {
                         <View style={styles.inputGroup}>
                             <Text style={[styles.label, { color: colors.textSecondary }]}>SETS</Text>
                             <TextInput
-                                style={[styles.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]}
+                                style={[styles.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.primary }]}
                                 value={sets}
                                 onChangeText={setSets}
                                 keyboardType="number-pad"
@@ -230,7 +237,7 @@ export default function LogScreen() {
                         </View>
                     </View>
 
-                    <Text style={[styles.label, { color: colors.textSecondary }]}>INTENSITY (1–10)</Text>
+                    <Text style={[styles.label, { color: colors.textSecondary }]}>INTENSITY TIER (1–10)</Text>
                     <TextInput
                         style={[styles.inputFull, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]}
                         value={intensity}
@@ -263,41 +270,46 @@ export default function LogScreen() {
 
                     <Text style={[styles.volumePreview, { color: colors.textPrimary }]}>
                         Session volume:{' '}
-                        <Text style={{ color: colors.warning, fontWeight: 'bold' }}>
-                            {weight && reps && sets ? `${(parseFloat(weight) || 0) * (parseInt(reps, 10) || 0) * (parseInt(sets, 10) || 0)} lbs` : '—'}
+                        <Text style={{ color: colors.warning, fontWeight: 'bold', fontSize: 16 }}>
+                            {weight && reps && sets ? `${(parseFloat(weight) || 0) * (parseInt(reps, 10) || 0) * (parseInt(sets, 10) || 0)} kg` : '—'}
                         </Text>
                     </Text>
 
                     <TouchableOpacity
-                        style={[styles.submitBtn, { borderColor: colors.success, backgroundColor: colors.transparentSuccess }, isSubmitting && { opacity: 0.5 }]}
+                        activeOpacity={0.8}
+                        style={[
+                            styles.submitBtn,
+                            { borderColor: colors.primary, backgroundColor: colors.primaryGlow || colors.transparentPrimary },
+                            isSubmitting && { opacity: 0.5 }
+                        ]}
                         onPress={handleLogWorkout}
                         disabled={isSubmitting || isLoading}
                     >
-                        <Text style={[styles.submitBtnText, { color: colors.success }]}>
-                            {isSubmitting ? 'SYNCING...' : 'LOG WORKOUT'}
+                        <Text style={[styles.submitBtnText, { color: colors.primary }]}>
+                            {isSubmitting ? 'SYNCING...' : 'RECORD RAID ✦'}
                         </Text>
                     </TouchableOpacity>
                 </View>
 
-                <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>RECENT WORKOUTS</Text>
+                <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>⟨ RECENT HISTORY ⟩</Text>
                 {recentWorkouts.length === 0 ? (
-                    <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No workout history yet. Start your ascension.</Text>
+                    <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No workout history yet. The dungeon awaits.</Text>
                 ) : (
                     recentWorkouts.map((w) => (
-                        <TouchableOpacity key={w.id}>
-                            <View style={[styles.historyCard, { backgroundColor: colors.backgroundSecondary, borderLeftColor: colors.primary }]}>
+                        <FadeInView key={w.id} delay={100}>
+                            <View style={[styles.historyCard, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border, borderLeftColor: colors.primary }]}>
                                 <View style={{ flex: 1 }}>
                                     <Text style={[styles.historyName, { color: colors.primary }]}>{w.exercise}</Text>
                                     <Text style={[styles.historyStats, { color: colors.textPrimary }]}>
-                                        {w.weight} lbs × {w.reps} × {w.sets} · vol {Math.round(w.volume || 0)}
+                                        {w.weight} kg × {w.reps} × {w.sets} · vol <Text style={{color: colors.warning}}>{Math.round(w.volume || 0)}</Text>
                                     </Text>
                                     <Text style={[styles.historyDate, { color: colors.textSecondary }]}>{new Date(w.date).toLocaleString()}</Text>
                                 </View>
-                                <View style={[styles.historyXpBadge, { borderColor: colors.success, backgroundColor: colors.transparentSuccess }]}>
+                                <View style={[styles.historyXpBadge, { borderColor: colors.success, backgroundColor: colors.successGlow || colors.transparentSuccess }]}>
                                     <Text style={[styles.historyXpText, { color: colors.success }]}>+{w.xpGained} XP</Text>
                                 </View>
                             </View>
-                        </TouchableOpacity>
+                        </FadeInView>
                     ))
                 )}
                 <View style={{ height: 48 }} />
@@ -316,48 +328,121 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         borderBottomWidth: 1,
     },
-    title: { fontSize: 20, fontWeight: 'bold', letterSpacing: 2 },
-    hint: { fontSize: 11, marginTop: 6, paddingHorizontal: 24, textAlign: 'center' },
+    title: { fontSize: 20, fontWeight: 'bold', letterSpacing: 3, marginBottom: 4 },
+    hint: { fontSize: 11, marginTop: 4, paddingHorizontal: 24, textAlign: 'center', letterSpacing: 1 },
     content: { flex: 1, padding: SIZES.padding },
     formCard: {
         padding: SIZES.padding,
-        borderRadius: SIZES.radius,
+        borderRadius: SIZES.radiusLg || 12,
         borderWidth: 1,
         marginBottom: 24,
+        position: 'relative',
+        overflow: 'hidden',
     },
-    label: { fontSize: SIZES.fontSmall, marginBottom: 8, letterSpacing: 1 },
-    exerciseGrid: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 16 },
+    glowLineTop: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        height: 3,
+    },
+    label: { fontSize: 10, fontWeight: 'bold', letterSpacing: 2, marginBottom: 8 },
+    exerciseGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
     exChip: {
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        borderRadius: 8,
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 20,
         borderWidth: 1,
-        marginRight: 6,
-        marginBottom: 6,
     },
-    exChipText: { fontSize: 11 },
-    muscleLine: { fontSize: 13, marginBottom: 16 },
-    row: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-    inputGroup: { flex: 1, marginHorizontal: 4, marginBottom: 12 },
-    input: { borderWidth: 1, padding: 12, borderRadius: SIZES.radius, fontSize: 16, textAlign: 'center' },
-    inputFull: { borderWidth: 1, padding: 12, borderRadius: SIZES.radius, fontSize: 16, marginBottom: 12 },
-    notes: { borderWidth: 1, padding: 12, borderRadius: SIZES.radius, fontSize: 14, minHeight: 72, textAlignVertical: 'top', marginBottom: 12 },
-    volumePreview: { fontSize: 14, marginBottom: 12 },
-    submitBtn: { borderWidth: 1, padding: 16, borderRadius: SIZES.radius, alignItems: 'center', marginTop: 4 },
-    submitBtnText: { fontSize: SIZES.fontMedium, fontWeight: 'bold', letterSpacing: 2 },
-    sectionTitle: { fontSize: SIZES.fontMedium, fontWeight: 'bold', marginBottom: 12, letterSpacing: 1 },
-    emptyText: { fontStyle: 'italic', textAlign: 'center', marginTop: 12 },
+    exChipText: { fontSize: 13 },
+    muscleLine: { fontSize: 11, letterSpacing: 1, marginBottom: 20, textAlign: 'right' },
+    row: { flexDirection: 'row', gap: 12, marginBottom: 16 },
+    inputGroup: { flex: 1 },
+    input: {
+        borderWidth: 1,
+        borderRadius: SIZES.radiusSm || 8,
+        padding: 12,
+        fontSize: 18,
+        fontWeight: 'bold',
+        textAlign: 'center',
+    },
+    inputFull: {
+        borderWidth: 1,
+        borderRadius: SIZES.radiusSm || 8,
+        padding: 12,
+        fontSize: 14,
+        marginBottom: 16,
+    },
+    notes: {
+        borderWidth: 1,
+        borderRadius: SIZES.radiusSm || 8,
+        padding: 12,
+        fontSize: 14,
+        minHeight: 80,
+        textAlignVertical: 'top',
+        marginBottom: 16,
+    },
+    volumePreview: {
+        fontSize: 13,
+        marginBottom: 16,
+        letterSpacing: 0.5,
+    },
+    submitBtn: {
+        borderWidth: 1,
+        padding: 16,
+        borderRadius: SIZES.radiusSm || 8,
+        alignItems: 'center',
+        marginTop: 4,
+    },
+    submitBtnText: {
+        fontSize: 13,
+        fontWeight: 'bold',
+        letterSpacing: 2,
+    },
+    sectionTitle: {
+        fontSize: 12,
+        fontWeight: 'bold',
+        marginBottom: 14,
+        letterSpacing: 2,
+    },
+    emptyText: {
+        fontStyle: 'italic',
+        textAlign: 'center',
+        marginTop: 12,
+        fontSize: 13,
+    },
     historyCard: {
         flexDirection: 'row',
         alignItems: 'center',
         padding: SIZES.padding,
-        borderRadius: SIZES.radius,
-        borderLeftWidth: 3,
+        borderRadius: SIZES.radiusSm || 8,
+        borderWidth: 1,
+        borderLeftWidth: 4,
         marginBottom: 10,
     },
-    historyName: { fontWeight: 'bold', fontSize: 16, marginBottom: 4 },
-    historyStats: { fontSize: 12, marginBottom: 4 },
-    historyDate: { fontSize: 10 },
-    historyXpBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, borderWidth: 1, marginLeft: 8 },
-    historyXpText: { fontWeight: 'bold', fontSize: 12 },
+    historyName: {
+        fontWeight: 'bold',
+        fontSize: 16,
+        marginBottom: 4,
+        letterSpacing: 1,
+    },
+    historyStats: {
+        fontSize: 12,
+        marginBottom: 4,
+    },
+    historyDate: {
+        fontSize: 10,
+        letterSpacing: 0.5,
+    },
+    historyXpBadge: {
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 12,
+        borderWidth: 1,
+        marginLeft: 8,
+    },
+    historyXpText: {
+        fontWeight: 'bold',
+        fontSize: 12,
+    },
 });

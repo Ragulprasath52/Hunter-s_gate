@@ -1,17 +1,22 @@
 {
   "expo": {
-    "name": "Solo Leveling Gym Tracker",
+    "name": "Hunter Gate:Gym log tracker",
     "slug": "solo-leveling-gym-tracker",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
+    "icon": "./assets/icon.png",
     "scheme": "sololevelingym",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.sololeveling.gymtracker"
     },
     "android": {
-      "package": "com.sololeveling.gymtracker"
+      "package": "com.sololeveling.gymtracker",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#0a0a0a"
+      }
     },
     "web": {
       "bundler": "metro",
@@ -19,7 +24,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "c529e492-b84a-4559-a000-c58465714894"
+        "projectId": "aa405350-a1ae-4de0-8220-37fec076186c"
       }
     }
   }

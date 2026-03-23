@@ -23,6 +23,7 @@ export const INITIAL_PROFILE = {
         arms: '',
         notes: '',
     },
+    customExercises: [],
 };
 
 function freshProfile() {
@@ -43,6 +44,7 @@ function normalizeProfile(p) {
         ...p,
         createdDate: p.createdDate || new Date().toISOString(),
         bodyStats: { ...INITIAL_PROFILE.bodyStats, ...(p.bodyStats || {}) },
+        customExercises: p.customExercises || [],
     };
 }
 

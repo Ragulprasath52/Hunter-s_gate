@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Share, Switch, Platform, Animated, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Share, Switch, Platform, Animated, Dimensions, TextInput, Modal } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { StorageService } from '../services/StorageService';
@@ -14,6 +14,7 @@ export default function ProfileScreen() {
     const insets = useSafeAreaInsets();
     const [profile, setProfile] = useState(null);
     const [workouts, setWorkouts] = useState([]);
+    const [customExerciseName, setCustomExerciseName] = useState('');
 
     useFocusEffect(
         useCallback(() => {
@@ -46,6 +47,9 @@ export default function ProfileScreen() {
     const squat = useMemo(() => bestLiftWithDate(workouts, 'Squat'), [workouts]);
     const deadlift = useMemo(() => bestLiftWithDate(workouts, 'Deadlift'), [workouts]);
 
+    const [isEditModalVisible, setIsEditModalVisible] = useState(false);
+    const [tempName, setTempName] = useState('');
+
     const handleEditName = () => {
         if (Platform.OS === 'ios' && Alert.prompt) {
             Alert.prompt(
@@ -69,8 +73,21 @@ export default function ProfileScreen() {
                 profile?.name || ''
             );
         } else {
-            // Safer fallback for Android/Web where Alert.prompt is not available
-            Alert.alert('System Info', 'Profile editing is coming soon to your platform, or set your identity in the system briefing.');
+            // Android Support via Custom Modal
+            setTempName(profile?.name || '');
+            setIsEditModalVisible(true);
+        }
+    };
+
+    const saveName = async () => {
+        if (tempName && tempName.trim()) {
+            const next = { ...profile, name: tempName.trim() };
+            await StorageService.saveUserProfile(next);
+            setProfile(next);
+            setIsEditModalVisible(false);
+            Alert.alert('SYSTEM UPDATED', `Welcome, Hunter ${tempName.trim()}.`);
+        } else {
+            Alert.alert('System Error', 'Hunter name cannot be empty.');
         }
     };
 
@@ -81,6 +98,27 @@ export default function ProfileScreen() {
         } catch {
             Alert.alert('ERROR', 'E-Rank performance: Export failed.');
         }
+    };
+
+    const handleAddCustomExercise = async () => {
+        const name = customExerciseName.trim();
+        if (!name) return;
+        
+        const currentCustoms = profile.customExercises || [];
+        if (currentCustoms.includes(name)) {
+            Alert.alert('System Error', 'Exercise already exists in the system.');
+            return;
+        }
+
+        const nextProfile = {
+            ...profile,
+            customExercises: [...currentCustoms, name],
+        };
+
+        await StorageService.saveUserProfile(nextProfile);
+        setProfile(nextProfile);
+        setCustomExerciseName('');
+        Alert.alert('Exercise Registered', `"${name}" added to the Hunter log.`);
     };
 
     const handleClearData = () => {
@@ -113,11 +151,12 @@ export default function ProfileScreen() {
         <View style={[styles.container, { backgroundColor: colors.background }]}>
             <FadeInView duration={400} style={{ flex: 1 }}>
                 <View style={[styles.header, { paddingTop: insets.top + 16, backgroundColor: colors.backgroundSecondary, borderBottomColor: colors.border }]}>
-                    <Text style={[styles.title, { color: colors.primary }]}>PROFILE & SETTINGS</Text>
+                    <Text style={[styles.title, { color: colors.primary }]}>⟨ HUNTER PROFILE ⟩</Text>
                 </View>
 
             <ScrollView style={styles.content}>
-                <FadeInView delay={100} style={[styles.profileCard, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
+                <FadeInView delay={100} style={[styles.profileCard, { backgroundColor: colors.backgroundSecondary, borderColor: colors.primary }]}>
+                    <View style={[styles.glowLineTop, { backgroundColor: colors.primary }]} />
                     <TouchableOpacity onPress={handleEditName} style={styles.avatarWrap}>
                         <View style={[styles.avatarPlaceholder, { borderColor: colors.primary, backgroundColor: colors.transparentPrimary }]}>
                             <Text style={[styles.avatarText, { color: colors.primary }]}>{profile.name.charAt(0).toUpperCase()}</Text>
@@ -138,20 +177,33 @@ export default function ProfileScreen() {
                 <FadeInView delay={200} style={[styles.infoSection, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
                     <Text style={[styles.infoTitle, { color: colors.primary }]}>PERSONAL RECORDS</Text>
                     <Text style={[styles.pr, { color: colors.textPrimary }]}>
-                        Bench: <Text style={{ fontWeight: 'bold', color: colors.primary }}>{bench.weight}</Text> lbs
+                        Bench: <Text style={{ fontWeight: 'bold', color: colors.primary }}>{bench.weight}</Text> kg
                         {bench.date ? <Text style={{ color: colors.textSecondary }}> · {new Date(bench.date).toLocaleDateString()}</Text> : null}
                     </Text>
                     <Text style={[styles.pr, { color: colors.textPrimary }]}>
-                        Squat: <Text style={{ fontWeight: 'bold', color: colors.success }}>{squat.weight}</Text> lbs
+                        Squat: <Text style={{ fontWeight: 'bold', color: colors.success }}>{squat.weight}</Text> kg
                         {squat.date ? <Text style={{ color: colors.textSecondary }}> · {new Date(squat.date).toLocaleDateString()}</Text> : null}
                     </Text>
                     <Text style={[styles.pr, { color: colors.textPrimary }]}>
-                        Deadlift: <Text style={{ fontWeight: 'bold', color: colors.warning }}>{deadlift.weight}</Text> lbs
+                        Deadlift: <Text style={{ fontWeight: 'bold', color: colors.warning }}>{deadlift.weight}</Text> kg
                         {deadlift.date ? <Text style={{ color: colors.textSecondary }}> · {new Date(deadlift.date).toLocaleDateString()}</Text> : null}
                     </Text>
                 </FadeInView>
 
-                <FadeInView delay={300} style={[styles.infoSection, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
+                <FadeInView delay={300} style={[styles.infoSection, { backgroundColor: colors.backgroundSecondary, borderColor: colors.primary }]}>
+                    <View style={[styles.glowLineTop, { backgroundColor: colors.accent || colors.primary }]} />
+                    <Text style={[styles.infoTitle, { color: colors.accent || colors.primary, marginBottom: 16 }]}>SYSTEM STATS (EVALUATION)</Text>
+                    
+                    <View style={styles.statGrid}>
+                        <StatItem label="STR" value={Math.floor((bench.weight + squat.weight + deadlift.weight) / 10)} fullLabel="STRENGTH" color={colors.primary} />
+                        <StatItem label="VIT" value={Math.min(99, Math.floor(workouts.length / 2 + profile.streak * 2))} fullLabel="VITALITY" color={colors.success} />
+                        <StatItem label="AGI" value={Math.min(99, Math.floor((profile.customExercises?.length || 0) * 5 + 10))} fullLabel="AGILITY" color={colors.accent || colors.primary} />
+                        <StatItem label="INT" value={Math.min(99, Math.floor(avgIntensity * 8))} fullLabel="INTELLIGENCE" color={colors.warning} />
+                    </View>
+                    <Text style={[styles.hint, { color: colors.textSecondary, textAlign: 'center', marginTop: 12 }]}>Stats are automatically adjusted based on current battle data.</Text>
+                </FadeInView>
+
+                <FadeInView delay={400} style={[styles.infoSection, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
                     <Text style={[styles.infoTitle, { color: colors.primary }]}>STATS SUMMARY</Text>
                     <Row label="Total workouts" value={`${workouts.length}`} colors={colors} />
                     <Row label="Total hours trained" value={totalHoursTrained(workouts).toFixed(1)} colors={colors} />
@@ -163,7 +215,7 @@ export default function ProfileScreen() {
                 <FadeInView delay={400} style={[styles.infoSection, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
                     <Text style={[styles.infoTitle, { color: colors.primary }]}>WEEKLY SUMMARY</Text>
                     <Text style={[styles.wowHead, { color: colors.textSecondary }]}>This week vs last week</Text>
-                    <Row label="Volume (lbs)" value={`${Math.round(wow.thisWeek.volume)} / ${Math.round(wow.lastWeek.volume)}`} colors={colors} />
+                    <Row label="Volume (kg)" value={`${Math.round(wow.thisWeek.volume)} / ${Math.round(wow.lastWeek.volume)}`} colors={colors} />
                     <Row label="Workouts" value={`${wow.thisWeek.workouts} / ${wow.lastWeek.workouts}`} colors={colors} />
                     <Row
                         label="Avg intensity"
@@ -175,6 +227,24 @@ export default function ProfileScreen() {
                 </FadeInView>
 
                 <FadeInView delay={500} style={[styles.infoSection, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
+                    <Text style={[styles.infoTitle, { color: colors.primary }]}>CUSTOM EXERCISES</Text>
+                    <View style={styles.addExerciseRow}>
+                        <TextInput
+                            style={[styles.exerciseInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]}
+                            placeholder="e.g. Incline Dumbbell Press"
+                            placeholderTextColor={colors.textSecondary}
+                            value={customExerciseName}
+                            onChangeText={setCustomExerciseName}
+                            maxLength={30}
+                        />
+                        <TouchableOpacity style={[styles.addBtn, { backgroundColor: colors.primaryGlow || colors.transparentPrimary, borderColor: colors.primary }]} onPress={handleAddCustomExercise}>
+                            <Text style={[styles.addBtnText, { color: colors.primary }]}>ADD</Text>
+                        </TouchableOpacity>
+                    </View>
+                    <Text style={[styles.hint, { color: colors.textSecondary }]}>These will appear along with default exercises in the Log Raid screen.</Text>
+                </FadeInView>
+
+                <FadeInView delay={600} style={[styles.infoSection, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
                     <Text style={[styles.infoTitle, { color: colors.primary }]}>APPEARANCE</Text>
                     <View style={styles.rowBetween}>
                         <Text style={{ color: colors.textPrimary, fontSize: 15 }}>Dark mode</Text>
@@ -188,7 +258,7 @@ export default function ProfileScreen() {
                     <Text style={[styles.hint, { color: colors.textSecondary }]}>Light mode uses a clean hunter briefing theme.</Text>
                 </FadeInView>
 
-                <FadeInView delay={600}>
+                <FadeInView delay={700}>
                     <TouchableOpacity style={[styles.actionBtn, { borderColor: colors.primary, backgroundColor: colors.backgroundSecondary }]} onPress={handleExport}>
                         <Text style={[styles.actionBtnText, { color: colors.primary }]}>EXPORT DATA (JSON)</Text>
                     </TouchableOpacity>
@@ -200,7 +270,7 @@ export default function ProfileScreen() {
                     <View style={[styles.about, { borderColor: colors.border, backgroundColor: colors.backgroundSecondary }]}>
                         <Text style={[styles.aboutTitle, { color: colors.primary }]}>ABOUT</Text>
                         <Text style={[styles.aboutBody, { color: colors.textSecondary }]}>
-                            Solo Leveling Gym Tracker is a local-first training log with XP, ranks, and quests. Data stays on your device via AsyncStorage.
+                            Hunter Gate: Gym log tracker is a local-first training log with XP, ranks, and quests. Data stays on your device via AsyncStorage.
                         </Text>
                         <Text style={[styles.aboutVer, { color: colors.textSecondary }]}>Version 1.0.0</Text>
                     </View>
@@ -209,6 +279,55 @@ export default function ProfileScreen() {
                 <View style={{ height: 100 }} />
             </ScrollView>
             </FadeInView>
+
+            {/* Android Edit Modal */}
+            <Modal
+                visible={isEditModalVisible}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={() => setIsEditModalVisible(false)}
+            >
+                <TouchableOpacity 
+                    activeOpacity={1} 
+                    style={styles.modalOverlay} 
+                    onPress={() => setIsEditModalVisible(false)}
+                >
+                    <TouchableOpacity 
+                        activeOpacity={1} 
+                        style={[styles.modalContent, { backgroundColor: colors.backgroundSecondary, borderColor: colors.primary }]}
+                        onPress={() => {}} // dummy to prevent closing when clicking content
+                    >
+                        <View style={[styles.glowLineTop, { backgroundColor: colors.primary }]} />
+                        <Text style={[styles.modalTitle, { color: colors.primary }]}>⟨ SYSTEM IDENTITY ⟩</Text>
+                        <Text style={[styles.modalHint, { color: colors.textSecondary }]}>Enter your hunter name to register in the system.</Text>
+                        
+                        <TextInput
+                            style={[styles.modalInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]}
+                            value={tempName}
+                            onChangeText={setTempName}
+                            placeholder="Hunter Name"
+                            placeholderTextColor={colors.textSecondary}
+                            autoFocus={true}
+                            maxLength={20}
+                        />
+
+                        <View style={styles.modalButtons}>
+                            <TouchableOpacity 
+                                style={[styles.modalBtn, { borderColor: colors.border }]} 
+                                onPress={() => setIsEditModalVisible(false)}
+                            >
+                                <Text style={{ color: colors.textSecondary, fontWeight: 'bold' }}>CANCEL</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity 
+                                style={[styles.modalBtn, { borderColor: colors.primary, backgroundColor: colors.transparentPrimary }]} 
+                                onPress={saveName}
+                            >
+                                <Text style={{ color: colors.primary, fontWeight: 'bold' }}>REGISTER</Text>
+                            </TouchableOpacity>
+                        </View>
+                        </TouchableOpacity>
+                    </TouchableOpacity>
+            </Modal>
         </View>
     );
 }
@@ -222,6 +341,18 @@ function Row({ label, value, colors }) {
     );
 }
 
+function StatItem({ label, value, fullLabel, color }) {
+    return (
+        <View style={styles.statItem}>
+            <View style={[styles.statRing, { borderColor: color }]}>
+                <Text style={[styles.statValue, { color }]}>{value}</Text>
+            </View>
+            <Text style={[styles.statLabel, { color }]}>{label}</Text>
+            <Text style={[styles.statFullLabel, { color: '#888' }]}>{fullLabel}</Text>
+        </View>
+    );
+}
+
 const styles = StyleSheet.create({
     container: { flex: 1 },
     header: {
@@ -229,31 +360,40 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         borderBottomWidth: 1,
     },
-    title: { fontSize: 18, fontWeight: 'bold', letterSpacing: 2 },
+    title: { fontSize: 20, fontWeight: 'bold', letterSpacing: 3 },
     content: { flex: 1, padding: SIZES.padding },
     profileCard: {
         alignItems: 'center',
-        padding: 20,
-        borderRadius: SIZES.radius,
+        padding: 30,
+        borderRadius: SIZES.radiusLg || 16,
         borderWidth: 1,
-        marginBottom: 16,
+        marginBottom: 20,
+        position: 'relative',
+        overflow: 'hidden',
+    },
+    glowLineTop: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        height: 3,
     },
     avatarPlaceholder: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
+        width: 88,
+        height: 88,
+        borderRadius: 44,
         borderWidth: 2,
         justifyContent: 'center',
         alignItems: 'center',
     },
-    avatarWrap: { marginBottom: 10, position: 'relative' },
+    avatarWrap: { marginBottom: 16, position: 'relative' },
     editIcon: {
         position: 'absolute',
         bottom: 0,
         right: 0,
-        paddingHorizontal: 6,
-        paddingVertical: 2,
-        borderRadius: 4,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 8,
     },
     avatarText: { fontSize: 32, fontWeight: 'bold' },
     nameText: { fontSize: 24, fontWeight: 'bold', marginBottom: 6 },
@@ -268,11 +408,19 @@ const styles = StyleSheet.create({
     joinDate: { fontSize: 12 },
     infoSection: {
         padding: SIZES.padding,
-        borderRadius: SIZES.radius,
+        borderRadius: SIZES.radiusSm || 12,
         borderWidth: 1,
         marginBottom: 16,
+        position: 'relative',
+        overflow: 'hidden',
     },
-    infoTitle: { fontSize: 14, fontWeight: 'bold', marginBottom: 12, letterSpacing: 1 },
+    statGrid: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center' },
+    statItem: { alignItems: 'center' },
+    statRing: { width: 50, height: 50, borderRadius: 25, borderWidth: 2, justifyContent: 'center', alignItems: 'center', marginBottom: 6 },
+    statLabel: { fontSize: 12, fontWeight: 'bold', letterSpacing: 1 },
+    statFullLabel: { fontSize: 8, marginTop: 2, letterSpacing: 0.5 },
+    statValue: { fontSize: 18, fontWeight: 'bold' },
+    infoTitle: { fontSize: 12, fontWeight: 'bold', marginBottom: 12, letterSpacing: 2 },
     pr: { fontSize: 14, marginBottom: 8 },
     wowHead: { fontSize: 12, marginBottom: 10 },
     infoRow: {
@@ -286,25 +434,63 @@ const styles = StyleSheet.create({
     infoValue: { fontSize: 14, fontWeight: 'bold' },
     rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
     hint: { fontSize: 11, marginTop: 8 },
-    actionBtn: {
-        borderWidth: 1,
-        padding: 16,
-        borderRadius: SIZES.radius,
-        alignItems: 'center',
-        marginBottom: 12,
-    },
-    actionBtnText: { fontSize: 14, fontWeight: 'bold', letterSpacing: 1 },
-    dangerBtn: {
-        backgroundColor: 'rgba(255, 50, 50, 0.08)',
-        borderWidth: 1,
-        padding: 16,
-        borderRadius: SIZES.radius,
-        alignItems: 'center',
-        marginBottom: 16,
-    },
-    dangerBtnText: { fontSize: 14, fontWeight: 'bold', letterSpacing: 1 },
+    actionBtn: { borderWidth: 1, padding: 16, borderRadius: SIZES.radiusSm || 12, alignItems: 'center', marginBottom: 16 },
+    actionBtnText: { fontSize: 13, fontWeight: 'bold', letterSpacing: 2 },
+    dangerBtn: { borderWidth: 1, padding: 16, borderRadius: SIZES.radiusSm || 12, alignItems: 'center', marginBottom: 24, backgroundColor: 'rgba(255,51,51,0.1)' },
+    dangerBtnText: { fontSize: 13, fontWeight: 'bold', letterSpacing: 2 },
+    addExerciseRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+    exerciseInput: { flex: 1, borderWidth: 1, padding: 12, borderRadius: SIZES.radiusSm || 8, fontSize: 14 },
+    addBtn: { borderWidth: 1, paddingHorizontal: 20, justifyContent: 'center', alignItems: 'center', borderRadius: SIZES.radiusSm || 8 },
+    addBtnText: { fontSize: 12, fontWeight: 'bold', letterSpacing: 1 },
     about: { borderWidth: 1, borderRadius: SIZES.radius, padding: SIZES.padding },
-    aboutTitle: { fontWeight: 'bold', marginBottom: 8 },
+    aboutTitle: { fontSize: 14, fontWeight: 'bold', marginBottom: 8, letterSpacing: 2 },
     aboutBody: { fontSize: 13, lineHeight: 20 },
     aboutVer: { marginTop: 10, fontSize: 11 },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.8)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 24,
+    },
+    modalContent: {
+        width: '100%',
+        padding: 24,
+        borderRadius: SIZES.radiusLg || 16,
+        borderWidth: 1,
+        position: 'relative',
+        overflow: 'hidden',
+    },
+    modalTitle: {
+        fontSize: 14,
+        fontWeight: 'bold',
+        letterSpacing: 2,
+        marginBottom: 8,
+        textAlign: 'center',
+    },
+    modalHint: {
+        fontSize: 12,
+        textAlign: 'center',
+        marginBottom: 20,
+    },
+    modalInput: {
+        borderWidth: 1,
+        borderRadius: 8,
+        padding: 14,
+        fontSize: 18,
+        fontWeight: 'bold',
+        marginBottom: 24,
+        textAlign: 'center',
+    },
+    modalButtons: {
+        flexDirection: 'row',
+        gap: 12,
+    },
+    modalBtn: {
+        flex: 1,
+        padding: 14,
+        borderRadius: 8,
+        borderWidth: 1,
+        alignItems: 'center',
+    },
 });

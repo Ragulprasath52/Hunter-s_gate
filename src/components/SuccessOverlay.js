@@ -4,41 +4,65 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../context/ThemeContext';
 import { SIZES } from '../constants/theme';
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
-export default function SuccessOverlay({ visible, onAnimationEnd, message = 'WORKOUT LOGGED' }) {
+export default function SuccessOverlay({ visible, onAnimationEnd, message = 'RAID COMPLETE' }) {
     const { colors } = useTheme();
     const opacity = useRef(new Animated.Value(0)).current;
-    const scale = useRef(new Animated.Value(0.5)).current;
-    const translateY = useRef(new Animated.Value(20)).current;
+    const scale = useRef(new Animated.Value(0.3)).current;
+    const translateY = useRef(new Animated.Value(30)).current;
+    const iconScale = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
         if (visible) {
+            // Reset
+            opacity.setValue(0);
+            scale.setValue(0.3);
+            translateY.setValue(30);
+            iconScale.setValue(0);
+
+            // Card entrance
             Animated.parallel([
-                Animated.timing(opacity, { toValue: 1, duration: 300, useNativeDriver: Platform.OS !== 'web' }),
-                Animated.spring(scale, { toValue: 1, friction: 6, useNativeDriver: Platform.OS !== 'web' }),
+                Animated.timing(opacity, { toValue: 1, duration: 250, useNativeDriver: Platform.OS !== 'web' }),
+                Animated.spring(scale, { toValue: 1, friction: 5, tension: 80, useNativeDriver: Platform.OS !== 'web' }),
                 Animated.timing(translateY, { toValue: 0, duration: 300, useNativeDriver: Platform.OS !== 'web' }),
             ]).start(() => {
+                // Icon pop
+                Animated.spring(iconScale, { toValue: 1, friction: 3, tension: 100, useNativeDriver: Platform.OS !== 'web' }).start();
+
+                // Auto-dismiss
                 setTimeout(() => {
                     Animated.parallel([
-                        Animated.timing(opacity, { toValue: 0, duration: 300, useNativeDriver: Platform.OS !== 'web' }),
-                        Animated.timing(translateY, { toValue: -20, duration: 300, useNativeDriver: Platform.OS !== 'web' }),
+                        Animated.timing(opacity, { toValue: 0, duration: 250, useNativeDriver: Platform.OS !== 'web' }),
+                        Animated.timing(translateY, { toValue: -30, duration: 250, useNativeDriver: Platform.OS !== 'web' }),
                     ]).start(onAnimationEnd);
-                }, 1500);
+                }, 1800);
             });
         }
-    }, [visible, opacity, scale, translateY, onAnimationEnd]);
+    }, [visible]);
 
     if (!visible) return null;
 
     return (
-        <Animated.View style={[styles.container, { opacity, backgroundColor: 'rgba(0,0,0,0.8)' }]}>
-            <Animated.View style={[styles.card, { backgroundColor: colors.backgroundSecondary, borderColor: colors.success, transform: [{ scale }, { translateY }] }]}>
-                <View style={[styles.iconCircle, { backgroundColor: colors.transparentSuccess, borderColor: colors.success }]}>
-                    <Ionicons name="checkmark-sharp" size={40} color={colors.success} />
-                </View>
+        <Animated.View style={[styles.container, { opacity, backgroundColor: 'rgba(5,5,16,0.9)' }]}>
+            <Animated.View style={[styles.card, {
+                backgroundColor: colors.backgroundSecondary,
+                borderColor: colors.success,
+                transform: [{ scale }, { translateY }],
+            }]}>
+                {/* Glow line */}
+                <View style={[styles.glowLine, { backgroundColor: colors.success }]} />
+
+                <Animated.View style={[styles.iconCircle, {
+                    backgroundColor: colors.successGlow || colors.transparentSuccess,
+                    borderColor: colors.success,
+                    transform: [{ scale: iconScale }],
+                }]}>
+                    <Ionicons name="checkmark-sharp" size={44} color={colors.success} />
+                </Animated.View>
+
                 <Text style={[styles.title, { color: colors.success }]}>{message}</Text>
-                <Text style={[styles.subtitle, { color: colors.textSecondary }]}>SYSTEM SYNC COMPLETE</Text>
+                <Text style={[styles.subtitle, { color: colors.textSecondary }]}>✦ XP SYNCED TO SYSTEM ✦</Text>
             </Animated.View>
         </Animated.View>
     );
@@ -52,16 +76,24 @@ const styles = StyleSheet.create({
         zIndex: 1000,
     },
     card: {
-        width: width * 0.7,
-        padding: 30,
-        borderRadius: SIZES.radius,
+        width: Math.min(width * 0.75, 320),
+        padding: 32,
+        borderRadius: SIZES.radiusLg || 16,
         borderWidth: 2,
         alignItems: 'center',
+        overflow: 'hidden',
+    },
+    glowLine: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        height: 3,
     },
     iconCircle: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
+        width: 88,
+        height: 88,
+        borderRadius: 44,
         borderWidth: 2,
         justifyContent: 'center',
         alignItems: 'center',
@@ -70,13 +102,13 @@ const styles = StyleSheet.create({
     title: {
         fontSize: 18,
         fontWeight: 'bold',
-        letterSpacing: 2,
+        letterSpacing: 3,
         textAlign: 'center',
         marginBottom: 8,
     },
     subtitle: {
-        fontSize: 12,
-        letterSpacing: 1,
+        fontSize: 11,
+        letterSpacing: 2,
         textAlign: 'center',
     },
 });

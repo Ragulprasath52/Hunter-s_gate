@@ -1,24 +1,13 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import React, { useState, useCallback, useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { StorageService } from '../services/StorageService';
 import { getAchievementProgress } from '../utils/gameLogic';
 import { SIZES } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
-import AchievementCard from '../components/AchievementCard';
+import { HUNTER_LEAGUES } from '../constants/achievements';
 import FadeInView from '../components/FadeInView';
-
-const ICONS = {
-    first_workout: '①',
-    century_club: '💯',
-    week_warrior: '🔥',
-    personal_record: '⚡',
-    strength_ascension: '🏔️',
-    beast_mode: '🐉',
-    iron_will: '🛡️',
-    champion_level: '👑',
-};
 
 export default function AchievementsScreen() {
     const { colors } = useTheme();
@@ -26,6 +15,7 @@ export default function AchievementsScreen() {
     const [achievements, setAchievements] = useState([]);
     const [profile, setProfile] = useState(null);
     const [workouts, setWorkouts] = useState([]);
+    const [expandedLeague, setExpandedLeague] = useState(null);
 
     useFocusEffect(
         useCallback(() => {
@@ -40,58 +30,162 @@ export default function AchievementsScreen() {
         }, [])
     );
 
-    const unlocked = achievements.filter((a) => a.unlocked);
-    const locked = achievements.filter((a) => !a.unlocked);
-    const unlockedCount = unlocked.length;
+    const leagueData = useMemo(() => {
+        return HUNTER_LEAGUES.map((league) => {
+            const leagueAchievements = achievements.filter((a) => a.league === league.rank);
+            const unlocked = leagueAchievements.filter((a) => a.unlocked);
+            const total = leagueAchievements.length;
+            const unlockedCount = unlocked.length;
+            const isComplete = total > 0 && unlockedCount === total;
+            return { ...league, achievements: leagueAchievements, unlockedCount, total, isComplete };
+        });
+    }, [achievements]);
+
+    const totalUnlocked = achievements.filter((a) => a.unlocked).length;
     const totalCount = achievements.length;
+
+    const toggleLeague = (rank) => {
+        setExpandedLeague(expandedLeague === rank ? null : rank);
+    };
 
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
             <FadeInView duration={400} style={{ flex: 1 }}>
                 <View style={[styles.header, { paddingTop: insets.top + 16, backgroundColor: colors.backgroundSecondary, borderBottomColor: colors.border }]}>
-                    <Text style={[styles.title, { color: colors.primary }]}>ACHIEVEMENTS</Text>
+                    <Text style={[styles.title, { color: colors.primary }]}>HUNTER LEAGUE</Text>
                     <Text style={[styles.subtitle, { color: colors.warning }]}>
-                        {unlockedCount} / {totalCount} UNLOCKED
+                        {totalUnlocked} / {totalCount} QUESTS CLEARED
                     </Text>
                 </View>
 
-                <ScrollView style={styles.content}>
-                    <FadeInView delay={300} style={styles.section}>
-                        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>UNLOCKED</Text>
-                        {unlocked.length === 0 ? (
-                            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Complete quests to populate this hall of fame.</Text>
-                        ) : (
-                            unlocked.map((ach, idx) => (
-                                <FadeInView key={ach.id} delay={400 + idx * 100}>
-                                    <AchievementCard
-                                        title={ach.name}
-                                        description={ach.description}
-                                        requirement={ach.requirement}
-                                        unlocked
-                                        date={ach.date}
-                                        icon={ICONS[ach.id] || '★'}
-                                    />
-                                </FadeInView>
-                            ))
-                        )}
-                    </FadeInView>
+                <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+                    {leagueData.map((league, idx) => {
+                        const isExpanded = expandedLeague === league.rank;
+                        return (
+                            <FadeInView key={league.rank} delay={100 + idx * 80}>
+                                {/* League Header Card */}
+                                <TouchableOpacity
+                                    activeOpacity={0.7}
+                                    onPress={() => toggleLeague(league.rank)}
+                                    style={[
+                                        styles.leagueCard,
+                                        {
+                                            backgroundColor: colors.backgroundSecondary,
+                                            borderColor: league.isComplete ? league.color : colors.border,
+                                            borderLeftWidth: 4,
+                                            borderLeftColor: league.color,
+                                        },
+                                    ]}
+                                >
+                                    <View style={styles.leagueHeader}>
+                                        <View style={styles.leagueLeft}>
+                                            <Text style={styles.leagueIcon}>{league.icon}</Text>
+                                            <View>
+                                                <Text style={[styles.leagueRank, { color: league.color }]}>{league.rank}</Text>
+                                                <Text style={[styles.leagueTitle, { color: colors.textPrimary }]}>{league.title}</Text>
+                                            </View>
+                                        </View>
+                                        <View style={styles.leagueRight}>
+                                            <View style={[styles.countBadge, { borderColor: league.color, backgroundColor: league.isComplete ? league.color + '30' : 'transparent' }]}>
+                                                <Text style={[styles.countText, { color: league.color }]}>
+                                                    {league.unlockedCount}/{league.total}
+                                                </Text>
+                                            </View>
+                                            <Text style={{ color: colors.textSecondary, fontSize: 16 }}>
+                                                {isExpanded ? '▲' : '▼'}
+                                            </Text>
+                                        </View>
+                                    </View>
 
-                    <FadeInView delay={600} style={styles.section}>
-                        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>LOCKED</Text>
-                        {locked.map((ach, idx) => (
-                            <FadeInView key={ach.id} delay={700 + idx * 100}>
-                                <AchievementCard
-                                    title={ach.name}
-                                    description={ach.description}
-                                    requirement={ach.requirement}
-                                    unlocked={false}
-                                    progress={profile ? getAchievementProgress(ach, profile, workouts) : 0}
-                                    icon="🔒"
-                                />
+                                    {/* Progress Bar */}
+                                    <View style={[styles.leagueProgressTrack, { backgroundColor: colors.background }]}>
+                                        <View
+                                            style={[
+                                                styles.leagueProgressFill,
+                                                {
+                                                    width: league.total > 0 ? `${(league.unlockedCount / league.total) * 100}%` : '0%',
+                                                    backgroundColor: league.color,
+                                                },
+                                            ]}
+                                        />
+                                    </View>
+
+                                    {!isExpanded && (
+                                        <Text style={[styles.leagueDesc, { color: colors.textSecondary }]}>{league.description}</Text>
+                                    )}
+                                </TouchableOpacity>
+
+                                {/* Expanded Achievement List */}
+                                {isExpanded && (
+                                    <View style={styles.achievementList}>
+                                        {league.achievements.map((ach, achIdx) => {
+                                            const prog = profile ? getAchievementProgress(ach, profile, workouts) : 0;
+                                            return (
+                                                <FadeInView key={ach.id} delay={achIdx * 60} duration={300}>
+                                                    <View
+                                                        style={[
+                                                            styles.achievementCard,
+                                                            {
+                                                                backgroundColor: ach.unlocked
+                                                                    ? league.color + '15'
+                                                                    : colors.backgroundSecondary,
+                                                                borderColor: ach.unlocked ? league.color : colors.border,
+                                                                borderLeftWidth: 3,
+                                                                borderLeftColor: ach.unlocked ? league.color : colors.border,
+                                                            },
+                                                        ]}
+                                                    >
+                                                        <View style={styles.achHeader}>
+                                                            <Text style={[styles.achIcon, { color: ach.unlocked ? league.color : colors.textSecondary }]}>
+                                                                {ach.unlocked ? '✦' : '◇'}
+                                                            </Text>
+                                                            <View style={styles.achContent}>
+                                                                <Text style={[styles.achTitle, { color: ach.unlocked ? league.color : colors.textPrimary }]}>
+                                                                    {ach.name}
+                                                                </Text>
+                                                                <Text style={[styles.achDesc, { color: colors.textSecondary }]}>
+                                                                    {ach.description}
+                                                                </Text>
+                                                            </View>
+                                                            {ach.unlocked && (
+                                                                <Text style={[styles.achCheck, { color: league.color }]}>✓</Text>
+                                                            )}
+                                                        </View>
+
+                                                        {!ach.unlocked && (
+                                                            <View style={styles.achProgressSection}>
+                                                                <View style={[styles.achProgressTrack, { backgroundColor: colors.background }]}>
+                                                                    <View
+                                                                        style={[
+                                                                            styles.achProgressFill,
+                                                                            {
+                                                                                width: `${Math.min(100, Math.round(prog * 100))}%`,
+                                                                                backgroundColor: league.color,
+                                                                            },
+                                                                        ]}
+                                                                    />
+                                                                </View>
+                                                                <Text style={[styles.achProgressText, { color: colors.textSecondary }]}>
+                                                                    {Math.round(prog * 100)}%
+                                                                </Text>
+                                                            </View>
+                                                        )}
+
+                                                        {ach.unlocked && ach.date && (
+                                                            <Text style={[styles.achDate, { color: league.color }]}>
+                                                                Cleared: {new Date(ach.date).toLocaleDateString()}
+                                                            </Text>
+                                                        )}
+                                                    </View>
+                                                </FadeInView>
+                                            );
+                                        })}
+                                    </View>
+                                )}
                             </FadeInView>
-                        ))}
-                    </FadeInView>
-                    <View style={{ height: 48 }} />
+                        );
+                    })}
+                    <View style={{ height: 60 }} />
                 </ScrollView>
             </FadeInView>
         </View>
@@ -105,10 +199,137 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         borderBottomWidth: 1,
     },
-    title: { fontSize: 18, fontWeight: 'bold', letterSpacing: 2 },
-    subtitle: { fontSize: 12, marginTop: 6, letterSpacing: 1 },
+    title: { fontSize: 20, fontWeight: 'bold', letterSpacing: 3 },
+    subtitle: { fontSize: 12, marginTop: 6, letterSpacing: 1.5 },
     content: { flex: 1, padding: SIZES.padding },
-    section: { marginBottom: 20 },
-    sectionTitle: { fontSize: 12, fontWeight: 'bold', marginBottom: 12, letterSpacing: 2 },
-    emptyText: { fontStyle: 'italic', textAlign: 'center', marginVertical: 12 },
+
+    // League Card
+    leagueCard: {
+        borderRadius: SIZES.radius,
+        borderWidth: 1,
+        padding: 16,
+        marginBottom: 12,
+    },
+    leagueHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 10,
+    },
+    leagueLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    leagueIcon: {
+        fontSize: 28,
+        marginRight: 12,
+    },
+    leagueRank: {
+        fontSize: 14,
+        fontWeight: 'bold',
+        letterSpacing: 2,
+    },
+    leagueTitle: {
+        fontSize: 11,
+        letterSpacing: 1,
+        marginTop: 2,
+    },
+    leagueRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+    countBadge: {
+        borderWidth: 1,
+        borderRadius: 12,
+        paddingHorizontal: 10,
+        paddingVertical: 3,
+    },
+    countText: {
+        fontSize: 12,
+        fontWeight: 'bold',
+        letterSpacing: 1,
+    },
+    leagueProgressTrack: {
+        height: 4,
+        borderRadius: 2,
+        overflow: 'hidden',
+        marginBottom: 8,
+    },
+    leagueProgressFill: {
+        height: '100%',
+        borderRadius: 2,
+    },
+    leagueDesc: {
+        fontSize: 11,
+        fontStyle: 'italic',
+        lineHeight: 16,
+    },
+
+    // Achievement List
+    achievementList: {
+        paddingLeft: 8,
+        marginBottom: 8,
+    },
+    achievementCard: {
+        borderRadius: SIZES.radius - 2,
+        borderWidth: 1,
+        padding: 14,
+        marginBottom: 8,
+    },
+    achHeader: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+    },
+    achIcon: {
+        fontSize: 18,
+        marginRight: 10,
+        marginTop: 2,
+    },
+    achContent: {
+        flex: 1,
+    },
+    achTitle: {
+        fontSize: 14,
+        fontWeight: 'bold',
+        letterSpacing: 1,
+        marginBottom: 3,
+    },
+    achDesc: {
+        fontSize: 12,
+        lineHeight: 17,
+    },
+    achCheck: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        marginLeft: 8,
+    },
+    achProgressSection: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 10,
+        paddingLeft: 28,
+    },
+    achProgressTrack: {
+        flex: 1,
+        height: 6,
+        borderRadius: 3,
+        overflow: 'hidden',
+    },
+    achProgressFill: {
+        height: '100%',
+        borderRadius: 3,
+    },
+    achProgressText: {
+        fontSize: 11,
+        fontWeight: 'bold',
+        marginLeft: 8,
+        width: 36,
+    },
+    achDate: {
+        fontSize: 10,
+        marginTop: 8,
+        paddingLeft: 28,
+        letterSpacing: 0.5,
+    },
 });

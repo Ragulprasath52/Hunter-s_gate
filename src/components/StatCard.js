@@ -1,49 +1,97 @@
-import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Animated } from 'react-native';
+import React, { useRef } from 'react';
+import { View, Text, StyleSheet, Animated, TouchableWithoutFeedback, Platform } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import { SIZES } from '../constants/theme';
 
-export default function StatCard({ label, value, color }) {
+export default function StatCard({ label, value, color, icon }) {
     const { colors } = useTheme();
-    const accent = color ?? colors.primary;
-    const scale = useRef(new Animated.Value(0.9)).current;
-    const opacity = useRef(new Animated.Value(0)).current;
+    const scaleAnim = useRef(new Animated.Value(1)).current;
+    const accentColor = color || colors.primary;
 
-    useEffect(() => {
-        Animated.parallel([
-            Animated.spring(scale, { toValue: 1, useNativeDriver: true, friction: 8 }),
-            Animated.timing(opacity, { toValue: 1, duration: 400, useNativeDriver: true }),
-        ]).start();
-    }, [scale, opacity]);
+    const onPressIn = () => {
+        Animated.spring(scaleAnim, {
+            toValue: 0.94,
+            friction: 5,
+            useNativeDriver: Platform.OS !== 'web',
+        }).start();
+    };
+
+    const onPressOut = () => {
+        Animated.spring(scaleAnim, {
+            toValue: 1,
+            friction: 4,
+            useNativeDriver: Platform.OS !== 'web',
+        }).start();
+    };
 
     return (
-        <Animated.View style={[styles.card, { backgroundColor: colors.backgroundSecondary, borderColor: accent, opacity, transform: [{ scale }] }]}>
-            <Text style={[styles.label, { color: colors.textSecondary }]}>{label}</Text>
-            <Text style={[styles.value, { color: accent }]}>{value}</Text>
-        </Animated.View>
+        <TouchableWithoutFeedback onPressIn={onPressIn} onPressOut={onPressOut}>
+            <Animated.View
+                style={[
+                    styles.card,
+                    {
+                        backgroundColor: colors.cardBg || colors.backgroundSecondary,
+                        borderColor: colors.border,
+                        transform: [{ scale: scaleAnim }],
+                    },
+                ]}
+            >
+                {/* Glow accent line at top */}
+                <View style={[styles.glowLine, { backgroundColor: accentColor }]} />
+
+                {icon && <Text style={[styles.icon, { color: accentColor }]}>{icon}</Text>}
+
+                <Text
+                    style={[styles.value, { color: accentColor }]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                >
+                    {value}
+                </Text>
+                <Text style={[styles.label, { color: colors.textSecondary }]} numberOfLines={1}>
+                    {label}
+                </Text>
+            </Animated.View>
+        </TouchableWithoutFeedback>
     );
 }
 
 const styles = StyleSheet.create({
     card: {
         flex: 1,
-        borderWidth: 1,
-        borderRadius: SIZES.radius,
-        padding: SIZES.padding,
         marginHorizontal: 4,
-        marginBottom: 10,
+        marginVertical: 4,
+        padding: 14,
+        borderRadius: SIZES.radius,
+        borderWidth: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        minWidth: '28%',
+        overflow: 'hidden',
+        minHeight: 85,
     },
-    label: {
-        fontSize: 10,
-        marginBottom: 4,
-        textTransform: 'uppercase',
-        textAlign: 'center',
+    glowLine: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        height: 3,
+        borderTopLeftRadius: SIZES.radius,
+        borderTopRightRadius: SIZES.radius,
+    },
+    icon: {
+        fontSize: 20,
+        marginBottom: 6,
     },
     value: {
-        fontSize: SIZES.fontLarge,
+        fontSize: 22,
         fontWeight: 'bold',
+        letterSpacing: 1,
+        marginBottom: 4,
+    },
+    label: {
+        fontSize: SIZES.fontXs || 10,
+        letterSpacing: 0.8,
+        textAlign: 'center',
+        textTransform: 'uppercase',
     },
 });
