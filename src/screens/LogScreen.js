@@ -183,7 +183,7 @@ export default function LogScreen() {
             <FadeInView duration={400} style={{ flex: 1 }}>
                 <View style={[styles.header, { paddingTop: insets.top + 16, backgroundColor: colors.backgroundSecondary, borderBottomColor: colors.border }]}>
                     <Text style={[styles.title, { color: colors.primary }]}>LOG WORKOUT</Text>
-                    <Text style={[styles.hint, { color: colors.textSecondary }]}>Web · pick exercise below, set intensity 1–10.</Text>
+                    <Text style={[styles.hint, { color: colors.textSecondary }]}>Record your training. The system calculates volume and XP.</Text>
                 </View>
 
             <ScrollView style={styles.content} keyboardShouldPersistTaps="handled">
