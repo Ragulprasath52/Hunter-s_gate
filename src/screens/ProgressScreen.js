@@ -2,7 +2,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, Dimensions, TextInput, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { LineChart, BarChart, RadarChart } from 'react-native-chart-kit';
+import { LineChart, BarChart } from 'react-native-chart-kit';
 import { StorageService } from '../services/StorageService';
 import { SIZES } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
@@ -83,13 +83,13 @@ export default function ProgressScreen() {
         return { labels, datasets: [{ data: values }] };
     }, [workouts]);
 
-    const radarData = useMemo(() => {
+    const muscleData = useMemo(() => {
         const raw = muscleVolumeTotals(workouts);
         const max = Math.max(1, ...raw);
         const norm = raw.map((v) => Math.round((v / max) * 100));
         return {
-            labels: ['Chest', 'Back', 'Legs', 'Arms', 'Shoulders'],
-            data: norm,
+            labels: ['Chst', 'Back', 'Legs', 'Arms', 'Shld'],
+            datasets: [{ data: norm }],
         };
     }, [workouts]);
 
@@ -156,22 +156,22 @@ export default function ProgressScreen() {
                             {workouts.length === 0 ? (
                                 <Text style={[styles.empty, { color: colors.textSecondary }]}>No data yet.</Text>
                             ) : (
-                                <RadarChart
-                                    data={{
-                                        labels: radarData.labels,
-                                        datasets: [{ data: radarData.data }],
-                                    }}
+                                <BarChart
+                                    data={muscleData}
                                     width={chartWidth}
-                                    height={240}
+                                    height={220}
                                     chartConfig={{
                                         ...chartConfig,
                                         color: (opacity = 1) => `rgba(0, 255, 136, ${opacity})`,
                                     }}
                                     style={styles.chart}
+                                    fromZero
+                                    showValuesOnTopOfBars
                                 />
                             )}
                         </View>
                     </FadeInView>
+
 
                     <FadeInView delay={300}>
                         <Text style={[styles.sectionTitle, { color: colors.primary }]}>⟨ WEEKLY VOLUME ⟩</Text>

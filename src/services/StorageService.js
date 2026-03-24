@@ -1,14 +1,17 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { mergeAchievementState } from '../constants/achievements';
+import { FirebaseService } from './FirebaseService';
 
 const KEYS = {
     USER_PROFILE: 'userProfile',
     WORKOUTS: 'workouts',
     ACHIEVEMENTS: 'achievements',
     SETTINGS: 'settings',
+    USER_ID: 'uniqueUserId',
 };
 
 export const INITIAL_PROFILE = {
+    uid: null,
     name: 'Hunter',
     createdDate: null,
     totalXP: 0,
@@ -49,6 +52,15 @@ function normalizeProfile(p) {
 }
 
 export const StorageService = {
+    async getOrCreateUID() {
+        let uid = await AsyncStorage.getItem(KEYS.USER_ID);
+        if (!uid) {
+            uid = 'hunter-' + Math.random().toString(36).substr(2, 9) + '-' + Date.now();
+            await AsyncStorage.setItem(KEYS.USER_ID, uid);
+        }
+        return uid;
+    },
+
     async loadAllData() {
         try {
             const [profileItem, workoutsItem, achievementsItem, settingsItem] = await Promise.all([
@@ -60,17 +72,23 @@ export const StorageService = {
 
             const rawAchievements = achievementsItem ? JSON.parse(achievementsItem) : [];
             const achievements = mergeAchievementState(rawAchievements);
+            
+            let profile = normalizeProfile(profileItem ? JSON.parse(profileItem) : null);
+            if (!profile.uid) {
+                profile.uid = await this.getOrCreateUID();
+            }
 
             return {
-                profile: normalizeProfile(profileItem ? JSON.parse(profileItem) : null),
+                profile,
                 workouts: workoutsItem ? JSON.parse(workoutsItem) : [],
                 achievements,
                 settings: settingsItem ? { ...DEFAULT_SETTINGS, ...JSON.parse(settingsItem) } : { ...DEFAULT_SETTINGS },
             };
         } catch (error) {
             console.error('Error loading data:', error);
+            const uid = await this.getOrCreateUID();
             return {
-                profile: { ...INITIAL_PROFILE },
+                profile: { ...INITIAL_PROFILE, uid },
                 workouts: [],
                 achievements: mergeAchievementState([]),
                 settings: { ...DEFAULT_SETTINGS },
@@ -84,6 +102,16 @@ export const StorageService = {
 
     async saveUserProfile(profile) {
         await AsyncStorage.setItem(KEYS.USER_PROFILE, JSON.stringify(profile));
+        if (profile.uid) {
+            FirebaseService.syncUserData(profile.uid, {
+                name: profile.name,
+                totalXP: profile.totalXP,
+                level: profile.level,
+                streak: profile.streak,
+                bestStreak: profile.bestStreak,
+                lastWorkoutDate: profile.lastWorkoutDate
+            });
+        }
     },
 
     async saveWorkoutsList(workouts) {
@@ -115,6 +143,18 @@ export const StorageService = {
             AsyncStorage.setItem(KEYS.USER_PROFILE, JSON.stringify(updatedProfile)),
             AsyncStorage.setItem(KEYS.ACHIEVEMENTS, JSON.stringify(achievements)),
         ]);
+
+        if (updatedProfile.uid) {
+            FirebaseService.syncUserData(updatedProfile.uid, {
+                name: updatedProfile.name,
+                totalXP: updatedProfile.totalXP,
+                level: updatedProfile.level,
+                streak: updatedProfile.streak,
+                bestStreak: updatedProfile.bestStreak,
+                lastWorkoutDate: updatedProfile.lastWorkoutDate,
+                workoutsCount: newWorkouts.length
+            });
+        }
 
         return { workouts: newWorkouts, achievements };
     },

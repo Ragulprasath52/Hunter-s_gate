@@ -7,7 +7,7 @@ import { useTheme } from '../context/ThemeContext';
 import HomeScreen from '../screens/HomeScreen';
 import LogScreen from '../screens/LogScreen';
 import ProgressScreen from '../screens/ProgressScreen';
-import AchievementsScreen from '../screens/AchievementsScreen';
+import LeagueScreen from '../screens/LeagueScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 
 const Tab = createBottomTabNavigator();
@@ -58,7 +58,7 @@ export default function TabNavigator() {
             <Tab.Screen name="Home" component={HomeScreen} />
             <Tab.Screen name="Log" component={LogScreen} />
             <Tab.Screen name="Progress" component={ProgressScreen} />
-            <Tab.Screen name="League" component={AchievementsScreen} />
+            <Tab.Screen name="League" component={LeagueScreen} />
             <Tab.Screen name="Profile" component={ProfileScreen} />
         </Tab.Navigator>
     );

@@ -51,13 +51,6 @@ export default function AchievementsScreen() {
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
             <FadeInView duration={400} style={{ flex: 1 }}>
-                <View style={[styles.header, { paddingTop: insets.top + 16, backgroundColor: colors.backgroundSecondary, borderBottomColor: colors.border }]}>
-                    <Text style={[styles.title, { color: colors.primary }]}>HUNTER LEAGUE</Text>
-                    <Text style={[styles.subtitle, { color: colors.warning }]}>
-                        {totalUnlocked} / {totalCount} QUESTS CLEARED
-                    </Text>
-                </View>
-
                 <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
                     {leagueData.map((league, idx) => {
                         const isExpanded = expandedLeague === league.rank;
