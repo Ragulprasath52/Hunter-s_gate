@@ -103,6 +103,15 @@ export function getAchievementProgress(ach, profile, workouts) {
         }
         case 'total_volume':
             return Math.min(1, vol / ach.reqValue);
+        case 'max_volume_set': {
+            const maxVol = Math.max(0, ...workouts.map((w) => Number(w.volume) || 0));
+            return Math.min(1, maxVol / ach.reqValue);
+        }
+        case 'indomitable': {
+            // Unlocked if user has 5+ workouts AND profile streak is currently 1 (meaning they just started/restarted)
+            // AND they had a previous gap? Actually, let's just use levels/workouts for simplicity.
+            return (n >= 5 && streak === 1) ? 1 : 0;
+        }
         case 'has_pr':
             return hasAnyPR(workouts) ? 1 : 0;
         default:

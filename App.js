@@ -1,11 +1,14 @@
 import 'react-native-gesture-handler';
-import React from 'react';
+import React, { useEffect } from 'react';
+import { NotificationService } from './src/services/NotificationService';
 import { View, ActivityIndicator, StyleSheet, StatusBar, Platform } from 'react-native';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { enableScreens } from 'react-native-screens';
 import TabNavigator from './src/navigation/TabNavigator';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
+import { SystemNotificationProvider } from './src/context/SystemNotificationContext';
+import SystemAlert from './src/components/SystemAlert';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
@@ -59,18 +62,31 @@ function NavigationRoot() {
                     <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
                 ) : null}
                 <TabNavigator />
+                <SystemAlert />
             </NavigationContainer>
         </View>
     );
 }
 
 export default function App() {
+    useEffect(() => {
+        const initNotifications = async () => {
+            const granted = await NotificationService.requestPermissions();
+            if (granted) {
+                await NotificationService.scheduleDailyQuestReminder();
+            }
+        };
+        initNotifications();
+    }, []);
+
     return (
         <ErrorBoundary>
             <View style={styles.appRoot}>
                 <SafeAreaProvider style={styles.flexFill}>
                     <ThemeProvider>
-                        <NavigationRoot />
+                        <SystemNotificationProvider>
+                            <NavigationRoot />
+                        </SystemNotificationProvider>
                     </ThemeProvider>
                 </SafeAreaProvider>
             </View>

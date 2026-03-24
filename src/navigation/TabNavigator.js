@@ -6,6 +6,7 @@ import { useTheme } from '../context/ThemeContext';
 
 import HomeScreen from '../screens/HomeScreen';
 import LogScreen from '../screens/LogScreen';
+import DungeonsScreen from '../screens/DungeonsScreen';
 import ProgressScreen from '../screens/ProgressScreen';
 import LeagueScreen from '../screens/LeagueScreen';
 import ProfileScreen from '../screens/ProfileScreen';
@@ -25,6 +26,7 @@ export default function TabNavigator() {
 
                     if (route.name === 'Home') iconName = focused ? 'home' : 'home-outline';
                     else if (route.name === 'Log') iconName = focused ? 'add-circle' : 'add-circle-outline';
+                    else if (route.name === 'Dungeons') iconName = focused ? 'flash' : 'flash-outline';
                     else if (route.name === 'Progress') iconName = focused ? 'analytics' : 'analytics-outline';
                     else if (route.name === 'League') iconName = focused ? 'trophy' : 'trophy-outline';
                     else if (route.name === 'Profile') iconName = focused ? 'person' : 'person-outline';
@@ -57,6 +59,7 @@ export default function TabNavigator() {
         >
             <Tab.Screen name="Home" component={HomeScreen} />
             <Tab.Screen name="Log" component={LogScreen} />
+            <Tab.Screen name="Dungeons" component={DungeonsScreen} />
             <Tab.Screen name="Progress" component={ProgressScreen} />
             <Tab.Screen name="League" component={LeagueScreen} />
             <Tab.Screen name="Profile" component={ProfileScreen} />

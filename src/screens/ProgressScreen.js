@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions, TextInput, TouchableOpacity } from 'react-native';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, Dimensions, TextInput, TouchableOpacity, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { LineChart, BarChart } from 'react-native-chart-kit';
@@ -29,6 +29,22 @@ export default function ProgressScreen() {
     const [arms, setArms] = useState('');
 
     const [isLoading, setIsLoading] = useState(true);
+    const scanAnim = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        Animated.loop(
+            Animated.timing(scanAnim, {
+                toValue: 1,
+                duration: 4000,
+                useNativeDriver: true,
+            })
+        ).start();
+    }, []);
+
+    const scanTranslateY = scanAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [-100, 600],
+    });
 
     useFocusEffect(
         useCallback(() => {
@@ -59,8 +75,9 @@ export default function ProgressScreen() {
             backgroundGradientTo: colors.backgroundSecondary,
             decimalPlaces: 0,
             color: (opacity = 1) => `rgba(0, 212, 255, ${opacity})`,
-            labelColor: () => colors.textSecondary,
-            propsForBackgroundLines: { stroke: colors.chartGrid },
+            labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity * 0.7})`,
+            propsForBackgroundLines: { stroke: 'rgba(255, 255, 255, 0.05)', strokeDasharray: '' },
+            propsForLabels: { fontSize: 10, fontWeight: 'bold' },
         }),
         [colors]
     );
@@ -116,8 +133,8 @@ export default function ProgressScreen() {
         <View style={[styles.container, { backgroundColor: colors.background }]}>
             <FadeInView duration={600} style={{ flex: 1 }}>
                 <View style={[styles.header, { paddingTop: insets.top + 16, backgroundColor: colors.backgroundSecondary, borderBottomColor: colors.border }]}>
-                    <Text style={[styles.title, { color: colors.primary }]}>⟨ ANALYTICS ⟩</Text>
-                    <Text style={[styles.sub, { color: colors.textSecondary }]}>Strength trends · balance · density</Text>
+                    <Text style={[styles.title, { color: colors.primary }]}>⟨ SYSTEM STATUS: BIOMETRIC EVALUATION ⟩</Text>
+                    <Text style={[styles.sub, { color: colors.textSecondary }]}>Real-time analysis of hunter physical performance and potential.</Text>
                 </View>
 
                 {isLoading && workouts.length === 0 ? (
@@ -127,9 +144,10 @@ export default function ProgressScreen() {
                 ) : (
                     <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 48 }}>
                         <FadeInView delay={100} duration={500}>
-                            <Text style={[styles.sectionTitle, { color: colors.primary }]}>⟨ STRENGTH TRENDS ⟩</Text>
+                            <Text style={[styles.sectionTitle, { color: colors.primary }]}>⟨ PHYS: STRENGTH TRENDS ⟩</Text>
                             <View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.backgroundSecondary }]}>
                                 <View style={[styles.glowLineTop, { backgroundColor: colors.primary }]} />
+                                <Animated.View style={[styles.scanLine, { backgroundColor: colors.primary, transform: [{ translateY: scanTranslateY }] }]} />
                                 {workouts.length === 0 ? (
                                     <Text style={[styles.empty, { color: colors.textSecondary }]}>Log workouts to see trends.</Text>
                                 ) : (
@@ -150,9 +168,10 @@ export default function ProgressScreen() {
                         </FadeInView>
 
                     <FadeInView delay={200}>
-                        <Text style={[styles.sectionTitle, { color: colors.accent || colors.primary }]}>⟨ MUSCLE BALANCE ⟩</Text>
+                        <Text style={[styles.sectionTitle, { color: colors.accent || colors.primary }]}>⟨ PHYS: MUSCLE BALANCE ⟩</Text>
                         <View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.backgroundSecondary }]}>
                             <View style={[styles.glowLineTop, { backgroundColor: colors.accent || colors.primary }]} />
+                            <Animated.View style={[styles.scanLine, { backgroundColor: colors.accent || colors.primary, transform: [{ translateY: scanTranslateY }] }]} />
                             {workouts.length === 0 ? (
                                 <Text style={[styles.empty, { color: colors.textSecondary }]}>No data yet.</Text>
                             ) : (
@@ -174,14 +193,18 @@ export default function ProgressScreen() {
 
 
                     <FadeInView delay={300}>
-                        <Text style={[styles.sectionTitle, { color: colors.primary }]}>⟨ WEEKLY VOLUME ⟩</Text>
+                        <Text style={[styles.sectionTitle, { color: colors.primary }]}>⟨ PHYS: WEEKLY VOLUME ⟩</Text>
                         <View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.backgroundSecondary }]}>
                             <View style={[styles.glowLineTop, { backgroundColor: colors.primary }]} />
+                            <Animated.View style={[styles.scanLine, { backgroundColor: colors.primary, transform: [{ translateY: scanTranslateY }] }]} />
                             <BarChart
                                 data={barData}
                                 width={chartWidth}
                                 height={220}
-                                chartConfig={chartConfig}
+                                chartConfig={{
+                                    ...chartConfig,
+                                    color: (opacity = 1) => `rgba(0, 212, 255, ${opacity})`,
+                                }}
                                 style={styles.chart}
                                 fromZero
                                 showValuesOnTopOfBars
@@ -192,9 +215,10 @@ export default function ProgressScreen() {
                     </FadeInView>
 
                     <FadeInView delay={400}>
-                        <Text style={[styles.sectionTitle, { color: colors.warning }]}>⟨ PERSONAL BESTS ⟩</Text>
+                        <Text style={[styles.sectionTitle, { color: colors.warning }]}>⟨ PHYS: PERSONAL RECORDS ⟩</Text>
                         <View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.backgroundSecondary }]}>
                             <View style={[styles.glowLineTop, { backgroundColor: colors.warning }]} />
+                            <Animated.View style={[styles.scanLine, { backgroundColor: colors.warning, transform: [{ translateY: scanTranslateY }] }]} />
                             <Text style={[styles.prLine, { color: colors.textPrimary }]}>
                                 Bench: <Text style={{ color: colors.primary, fontWeight: 'bold' }}>{bench.weight}</Text> kg
                                 {bench.date ? <Text style={{ color: colors.textSecondary, fontSize: 12 }}> · {new Date(bench.date).toLocaleDateString()}</Text> : null}
@@ -211,9 +235,10 @@ export default function ProgressScreen() {
                     </FadeInView>
 
                     <FadeInView delay={500}>
-                        <Text style={[styles.sectionTitle, { color: colors.primary }]}>⟨ MONTHLY PERFORMANCE ⟩</Text>
+                        <Text style={[styles.sectionTitle, { color: colors.primary }]}>⟨ COMP: MONTHLY PERFORMANCE ⟩</Text>
                         <View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.backgroundSecondary }]}>
                             <View style={[styles.glowLineTop, { backgroundColor: colors.primary }]} />
+                            <Animated.View style={[styles.scanLine, { backgroundColor: colors.primary, transform: [{ translateY: scanTranslateY }] }]} />
                             <View style={styles.compareRow}>
                                 <Text style={[styles.compareHead, { color: colors.textSecondary }]} />
                                 <Text style={[styles.compareHead, { color: colors.primary }]}>This month</Text>
@@ -233,9 +258,10 @@ export default function ProgressScreen() {
                     </FadeInView>
 
                     <FadeInView delay={600}>
-                        <Text style={[styles.sectionTitle, { color: colors.success }]}>⟨ ACTIVITY MATRIX ⟩</Text>
+                        <Text style={[styles.sectionTitle, { color: colors.success }]}>⟨ SYS: ACTIVITY MATRIX ⟩</Text>
                         <View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.backgroundSecondary }]}>
                             <View style={[styles.glowLineTop, { backgroundColor: colors.success }]} />
+                            <Animated.View style={[styles.scanLine, { backgroundColor: colors.success, transform: [{ translateY: scanTranslateY }] }]} />
                             <Text style={[styles.heatLegend, { color: colors.textSecondary }]}>Last 12 weeks · darker = more sessions</Text>
                             <View style={styles.heatGrid}>
                                 {heatmap.grid.map((row, ri) => (
@@ -255,9 +281,10 @@ export default function ProgressScreen() {
                     </FadeInView>
 
                     <FadeInView delay={700}>
-                        <Text style={[styles.sectionTitle, { color: colors.primary }]}>⟨ BIOMETRIC DATA ⟩</Text>
+                        <Text style={[styles.sectionTitle, { color: colors.primary }]}>⟨ SYS: HUNTER REGISTRY (BIOMETRICS) ⟩</Text>
                         <View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.backgroundSecondary }]}>
                             <View style={[styles.glowLineTop, { backgroundColor: colors.primary }]} />
+                            <Animated.View style={[styles.scanLine, { backgroundColor: colors.primary, transform: [{ translateY: scanTranslateY }] }]} />
                             <Field label="Body weight (kg)" value={bodyWeight} onChangeText={setBodyWeight} colors={colors} />
                             <Field label="Chest (in)" value={chest} onChangeText={setChest} colors={colors} />
                             <Field label="Waist (in)" value={waist} onChangeText={setWaist} colors={colors} />
@@ -327,6 +354,16 @@ const styles = StyleSheet.create({
         left: 0,
         right: 0,
         height: 3,
+    },
+    scanLine: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        height: 2,
+        backgroundColor: 'rgba(0, 212, 255, 0.4)',
+        zIndex: 10,
+        opacity: 0.5,
     },
     chart: { marginVertical: 8, borderRadius: SIZES.radius },
     empty: { textAlign: 'center', padding: 24, fontStyle: 'italic' },

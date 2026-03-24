@@ -132,6 +132,38 @@ export const ACHIEVEMENT_DEFINITIONS = [
         reqValue: 100000,
         league: 'S-Rank',
     },
+
+    // ── SECRET QUESTS (Hidden trials) ──
+    {
+        id: 'giant_slayer',
+        name: 'The Giant Slayer',
+        description: 'You have faced a monstrosity and prevailed. Lift 150 kg or more in a single set.',
+        requirement: 'Log a set at 150 kg or more.',
+        reqType: 'weight_set',
+        reqValue: 150,
+        league: 'S-Rank',
+        isHidden: true,
+    },
+    {
+        id: 'system_overload',
+        name: 'System Overload',
+        description: 'You have pushed the system to its breaking point. Achieve 5,000 kg volume in a single raid.',
+        requirement: 'Log a workout with 5,000 kg+ volume.',
+        reqType: 'max_volume_set',
+        reqValue: 5000,
+        league: 'A-Rank',
+        isHidden: true,
+    },
+    {
+        id: 'indomitable',
+        name: 'Indomitable Spirit',
+        description: 'You refuse to stay down. Log a workout after a 0-day streak (recovery).',
+        requirement: 'Return to the dungeon after a hiatus.',
+        reqType: 'indomitable',
+        reqValue: 1,
+        league: 'D-Rank',
+        isHidden: true,
+    },
 ];
 
 export function mergeAchievementState(storedList) {

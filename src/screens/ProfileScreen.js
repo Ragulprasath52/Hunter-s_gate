@@ -1,8 +1,11 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Share, Switch, Platform, Animated, Dimensions, TextInput, Modal } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import * as Clipboard from 'expo-clipboard';
 import { StorageService } from '../services/StorageService';
+import { InventoryService, INVENTORY_ITEMS } from '../services/InventoryService';
 import { getRank, calculateLevelProgress } from '../utils/gameLogic';
 import { SIZES } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
@@ -16,8 +19,32 @@ export default function ProfileScreen() {
     const [workouts, setWorkouts] = useState([]);
     const [customExerciseName, setCustomExerciseName] = useState('');
     const [isSyncModalVisible, setIsSyncModalVisible] = useState(false);
+    const [isInventoryModalVisible, setIsInventoryModalVisible] = useState(false);
     const [syncUid, setSyncUid] = useState('');
     const [isSyncing, setIsSyncing] = useState(false);
+
+    const auraAnim = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        if (profile?.equipped?.aura) {
+            Animated.loop(
+                Animated.sequence([
+                    Animated.timing(auraAnim, {
+                        toValue: 1,
+                        duration: 1500,
+                        useNativeDriver: true,
+                    }),
+                    Animated.timing(auraAnim, {
+                        toValue: 0,
+                        duration: 1500,
+                        useNativeDriver: true,
+                    }),
+                ])
+            ).start();
+        } else {
+            auraAnim.setValue(0);
+        }
+    }, [profile?.equipped?.aura]);
 
     useFocusEffect(
         useCallback(() => {
@@ -31,6 +58,22 @@ export default function ProfileScreen() {
             setProfile(data.profile);
             setWorkouts(data.workouts);
         }
+    };
+
+    const handleEquip = async (item) => {
+        if (!profile) return;
+        
+        const newEquipped = { ...(profile.equipped || {}) };
+        if (newEquipped[item.type] === item.id) {
+            // Unequip if already equipped
+            newEquipped[item.type] = null;
+        } else {
+            newEquipped[item.type] = item.id;
+        }
+
+        const nextProfile = { ...profile, equipped: newEquipped };
+        await StorageService.saveUserProfile(nextProfile);
+        setProfile(nextProfile);
     };
 
     const levelInfo = useMemo(() => {
@@ -142,12 +185,19 @@ export default function ProfileScreen() {
         }
     };
 
-    const copyUid = () => {
-        if (profile?.uid) {
-            Share.share({ message: profile.uid });
-        }
+    const copyUid = async () => {
+        if (!profile?.uid) return;
+        await Clipboard.setStringAsync(profile.uid);
+        Alert.alert('SYSTEM SYNC', 'Hunter ID copied to clipboard. Keep this safe for account recovery.');
     };
 
+    const handleShareUid = () => {
+        if (!profile?.uid) return;
+        Share.share({
+            message: `My Hunter Gate ID: ${profile.uid}\n\nKeep this ID safe! You can use it to recover your workouts and progress if you delete the app or change phones.`,
+            title: 'Hunter Gate Recovery Key'
+        });
+    };
     const handleAddCustomExercise = async () => {
         const name = customExerciseName.trim();
         if (!name) return;
@@ -193,7 +243,27 @@ export default function ProfileScreen() {
         );
     }
 
+    const getAuraColor = (auraId) => {
+        switch (auraId) {
+            case 'aura_purple': return '#bf00ff';
+            case 'aura_blue': return colors.accent || colors.primary;
+            case 'aura_red': return '#ff3333';
+            case 'aura_black': return '#111111';
+            default: return null;
+        }
+    };
+
+    const getBorderColor = (borderId) => {
+        switch (borderId) {
+            case 'border_gold': return '#FFD700';
+            case 'border_neon': return '#00f2ff';
+            default: return colors.primary;
+        }
+    };
+
     const rank = getRank(levelInfo.level);
+    const borderColor = getBorderColor(profile.equipped?.border);
+    const auraColor = getAuraColor(profile.equipped?.aura);
 
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -203,24 +273,68 @@ export default function ProfileScreen() {
                 </View>
 
             <ScrollView style={styles.content}>
-                <FadeInView delay={100} style={[styles.profileCard, { backgroundColor: colors.backgroundSecondary, borderColor: colors.primary }]}>
-                    <View style={[styles.glowLineTop, { backgroundColor: colors.primary }]} />
-                    <TouchableOpacity onPress={handleEditName} style={styles.avatarWrap}>
-                        <View style={[styles.avatarPlaceholder, { borderColor: colors.primary, backgroundColor: colors.transparentPrimary }]}>
-                            <Text style={[styles.avatarText, { color: colors.primary }]}>{profile.name.charAt(0).toUpperCase()}</Text>
+                <View style={{ position: 'relative', marginBottom: 20 }}>
+                    {auraColor && (
+                        <Animated.View 
+                            style={[
+                                styles.auraContainer, 
+                                { 
+                                    borderColor: auraColor,
+                                    shadowColor: auraColor,
+                                    shadowRadius: 15,
+                                    shadowOpacity: 0.8,
+                                    opacity: auraAnim.interpolate({
+                                        inputRange: [0, 1],
+                                        outputRange: [0.2, 0.7]
+                                    }),
+                                    transform: [{
+                                        scale: auraAnim.interpolate({
+                                            inputRange: [0, 1],
+                                            outputRange: [1, 1.05]
+                                        })
+                                    }]
+                                }
+                            ]} 
+                        />
+                    )}
+
+                    <FadeInView delay={100} style={[
+                        styles.profileCard, 
+                        { 
+                            backgroundColor: colors.backgroundSecondary, 
+                            borderColor: borderColor,
+                            borderWidth: profile.equipped?.border ? 2 : 1,
+                            marginBottom: 0
+                        }
+                    ]}>
+                        <View style={[styles.glowLineTop, { backgroundColor: borderColor }]} />
+                        <TouchableOpacity onPress={handleEditName} style={styles.avatarWrap}>
+                            <View style={[styles.avatarPlaceholder, { 
+                                borderColor: borderColor, 
+                                backgroundColor: colors.transparentPrimary 
+                            }]}>
+                                <Text style={[styles.avatarText, { color: borderColor }]}>
+                                    {(profile.name || 'H').charAt(0).toUpperCase()}
+                                </Text>
+                            </View>
+                            <View style={[styles.editIcon, { backgroundColor: borderColor }]}>
+                                <Text style={{ color: colors.background, fontSize: 10, fontWeight: 'bold' }}>EDIT</Text>
+                            </View>
+                        </TouchableOpacity>
+                        <Text style={[styles.nameText, { color: colors.textPrimary }]}>
+                            {profile.name} {profile.equipped?.title ? `⟨ ${InventoryService.getItem(profile.equipped.title)?.name} ⟩` : ''}
+                        </Text>
+                        <View style={[styles.rankBadge, { borderColor: colors.success, backgroundColor: colors.transparentSuccess }]}>
+                            <Text style={[styles.rankText, { color: colors.success }]}>{rank}</Text>
                         </View>
-                        <View style={[styles.editIcon, { backgroundColor: colors.primary }]}>
-                            <Text style={{ color: colors.background, fontSize: 10, fontWeight: 'bold' }}>EDIT</Text>
-                        </View>
-                    </TouchableOpacity>
-                    <Text style={[styles.nameText, { color: colors.textPrimary }]}>{profile.name}</Text>
-                    <View style={[styles.rankBadge, { borderColor: colors.success, backgroundColor: colors.transparentSuccess }]}>
-                        <Text style={[styles.rankText, { color: colors.success }]}>{rank}</Text>
-                    </View>
-                    <Text style={[styles.joinDate, { color: colors.textSecondary }]}>
-                        Hunter since {new Date(profile.createdDate).toLocaleDateString()}
-                    </Text>
-                </FadeInView>
+                        <Text style={[styles.shadowArmyText, { color: colors.primaryGlow || colors.accent || colors.primary }]}>
+                            SHADOWS EXTRACTED: {Math.max(0, Math.floor((workouts.length / 5) + (levelInfo.level)))}
+                        </Text>
+                        <Text style={[styles.joinDate, { color: colors.textSecondary }]}>
+                            Hunter since {new Date(profile.createdDate).toLocaleDateString()}
+                        </Text>
+                    </FadeInView>
+                </View>
 
                 <FadeInView delay={200} style={[styles.infoSection, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
                     <Text style={[styles.infoTitle, { color: colors.primary }]}>PERSONAL RECORDS</Text>
@@ -294,7 +408,8 @@ export default function ProfileScreen() {
 
                 <FadeInView delay={600} style={[styles.infoSection, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
                     <Text style={[styles.infoTitle, { color: colors.primary }]}>APPEARANCE</Text>
-                    <View style={styles.rowBetween}>
+                    
+                    <View style={[styles.rowBetween, { marginBottom: 16 }]}>
                         <Text style={{ color: colors.textPrimary, fontSize: 15 }}>Dark mode</Text>
                         <Switch
                             value={isDark}
@@ -303,7 +418,17 @@ export default function ProfileScreen() {
                             thumbColor={isDark ? colors.primary : colors.textSecondary}
                         />
                     </View>
-                    <Text style={[styles.hint, { color: colors.textSecondary }]}>Light mode uses a clean hunter briefing theme.</Text>
+
+                    <TouchableOpacity 
+                        style={[styles.syncBtn, { borderColor: colors.accent || colors.primary, backgroundColor: 'rgba(0, 212, 255, 0.05)' }]} 
+                        onPress={() => setIsInventoryModalVisible(true)}
+                    >
+                        <Text style={[styles.syncBtnText, { color: colors.accent || colors.primary }]}>
+                            OPEN HUNTER'S STASH (LOOT) ⚔
+                        </Text>
+                    </TouchableOpacity>
+                    
+                    <Text style={[styles.hint, { color: colors.textSecondary }]}>Customize your profile with unlocked auras and titles.</Text>
                 </FadeInView>
 
                 <FadeInView delay={700}>
@@ -334,7 +459,7 @@ export default function ProfileScreen() {
                             Use this ID to sync your progress to another device or backup your data.
                         </Text>
 
-                        <View style={{ flexDirection: 'row', gap: 10 }}>
+                        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
                             <TouchableOpacity 
                                 style={[styles.syncBtn, { borderColor: colors.primary, flex: 1 }]} 
                                 onPress={() => setIsSyncModalVisible(true)}
@@ -351,6 +476,13 @@ export default function ProfileScreen() {
                                 </Text>
                             </TouchableOpacity>
                         </View>
+
+                        <TouchableOpacity 
+                            style={[styles.syncBtn, { borderColor: colors.warning, backgroundColor: 'rgba(255, 170, 0, 0.1)' }]} 
+                            onPress={handleShareUid}
+                        >
+                            <Text style={[styles.syncBtnText, { color: colors.warning }]}>BACKUP HUNTER ID (RECOVERY KEY) ⚷</Text>
+                        </TouchableOpacity>
                     </View>
 
                     <TouchableOpacity 
@@ -471,6 +603,96 @@ export default function ProfileScreen() {
                 </TouchableOpacity>
             </TouchableOpacity>
         </Modal>
+
+        {/* Inventory Modal */}
+        <Modal
+            visible={isInventoryModalVisible}
+            transparent={true}
+            animationType="slide"
+            onRequestClose={() => setIsInventoryModalVisible(false)}
+        >
+            <TouchableOpacity 
+                activeOpacity={1} 
+                style={styles.modalOverlay} 
+                onPress={() => setIsInventoryModalVisible(false)}
+            >
+                <TouchableOpacity 
+                    activeOpacity={1} 
+                    style={[styles.modalContent, { backgroundColor: colors.backgroundSecondary, borderColor: colors.accent || colors.primary, maxHeight: '80%' }]}
+                    onPress={() => {}}
+                >
+                    <View style={[styles.glowLineTop, { backgroundColor: colors.accent || colors.primary }]} />
+                    <Text style={[styles.modalTitle, { color: colors.accent || colors.primary }]}>⟨ HUNTER'S STASH ⟩</Text>
+                    <Text style={[styles.modalHint, { color: colors.textSecondary }]}>Collect loot by completing system objectives and unlocking achievements.</Text>
+                    
+                    <ScrollView style={{ marginVertical: 20 }}>
+                        {INVENTORY_ITEMS.map((item) => {
+                            const inventory = profile?.inventory || [];
+                            const equipped = profile?.equipped || {};
+                            const isUnlocked = inventory.includes(item.id);
+                            const isEquipped = equipped[item.type] === item.id;
+                            
+                            return (
+                                <TouchableOpacity 
+                                    key={item.id}
+                                    disabled={!isUnlocked}
+                                    onPress={() => handleEquip(item)}
+                                    style={[
+                                        styles.inventoryItem,
+                                        { 
+                                            borderColor: isEquipped ? (colors.accent || colors.primary) : colors.border,
+                                            opacity: isUnlocked ? 1 : 0.5,
+                                            backgroundColor: isEquipped ? 'rgba(0, 212, 255, 0.05)' : colors.background
+                                        }
+                                    ]}
+                                >
+                                    <View style={styles.inventoryItemInfo}>
+                                        <Text style={[styles.itemType, { color: colors.textSecondary }]}>{item.type.toUpperCase()}</Text>
+                                        <Text style={[styles.itemName, { color: isUnlocked ? colors.textPrimary : colors.textSecondary }]}>
+                                            {item.name} {isEquipped ? '✦' : ''}
+                                        </Text>
+                                        <Text style={[styles.itemDesc, { color: colors.textSecondary }]}>
+                                            {isUnlocked ? item.description : `LOCKED: ${item.requirement}`}
+                                        </Text>
+                                    </View>
+                                    <View style={[styles.equipStatus, { borderColor: isUnlocked ? (isEquipped ? (colors.accent || colors.primary) : colors.border) : colors.border }]}>
+                                        {isEquipped ? (
+                                            <Ionicons name="checkmark-circle" size={24} color={colors.accent || colors.primary} />
+                                        ) : (
+                                            <Ionicons name={isUnlocked ? "ellipse-outline" : "lock-closed"} size={20} color={colors.textSecondary} />
+                                        )}
+                                    </View>
+                                </TouchableOpacity>
+                            );
+                        })}
+                    </ScrollView>
+
+                    <TouchableOpacity 
+                        style={[
+                            styles.modalBtn, 
+                            { 
+                                backgroundColor: colors.accent || colors.primary, 
+                                borderColor: colors.accent || colors.primary,
+                                marginTop: 10, 
+                                flex: 0, 
+                                alignSelf: 'center', 
+                                minWidth: 200,
+                                shadowColor: colors.accent || colors.primary,
+                                shadowOffset: { width: 0, height: 4 },
+                                shadowOpacity: 0.3,
+                                shadowRadius: 8,
+                                elevation: 5
+                            }
+                        ]} 
+                        onPress={() => {
+                            setIsInventoryModalVisible(false);
+                        }}
+                    >
+                        <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 13, letterSpacing: 1 }}>CLOSE STASH</Text>
+                    </TouchableOpacity>
+                </TouchableOpacity>
+            </TouchableOpacity>
+        </Modal>
     </View>
     );
 }
@@ -548,6 +770,7 @@ const styles = StyleSheet.create({
         marginBottom: 8,
     },
     rankText: { fontWeight: 'bold', fontSize: 13, letterSpacing: 2 },
+    shadowArmyText: { fontSize: 10, fontWeight: 'bold', letterSpacing: 1.5, marginTop: 4, marginBottom: 8 },
     joinDate: { fontSize: 12 },
     infoSection: {
         padding: SIZES.padding,
@@ -664,9 +887,52 @@ const styles = StyleSheet.create({
     },
     modalBtn: {
         flex: 1,
-        padding: 14,
+        height: 48,
         borderRadius: 8,
         borderWidth: 1,
         alignItems: 'center',
+        justifyContent: 'center',
+    },
+    inventoryItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 16,
+        borderRadius: 12,
+        borderWidth: 1,
+        marginBottom: 12,
+    },
+    inventoryItemInfo: {
+        flex: 1,
+    },
+    itemType: {
+        fontSize: 9,
+        fontWeight: 'bold',
+        marginBottom: 4,
+    },
+    itemName: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        marginBottom: 4,
+    },
+    itemDesc: {
+        fontSize: 11,
+    },
+    equipStatus: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        borderWidth: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginLeft: 12,
+    },
+    auraContainer: {
+        position: 'absolute',
+        top: -10,
+        left: -10,
+        right: -10,
+        bottom: -10,
+        borderRadius: 20,
+        borderWidth: 2,
     },
 });

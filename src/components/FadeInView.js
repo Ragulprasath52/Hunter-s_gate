@@ -26,17 +26,17 @@ export default function FadeInView({ children, delay = 0, duration = 450, style 
                 Animated.timing(fadeAnim, {
                     toValue: 1,
                     duration,
-                    useNativeDriver: Platform.OS !== 'web',
+                    useNativeDriver: false,
                 }),
                 Animated.timing(slideAnim, {
                     toValue: 0,
                     duration,
-                    useNativeDriver: Platform.OS !== 'web',
+                    useNativeDriver: false,
                 }),
                 Animated.timing(scaleAnim, {
                     toValue: 1,
                     duration,
-                    useNativeDriver: Platform.OS !== 'web',
+                    useNativeDriver: false,
                 }),
             ]).start();
         };
@@ -49,11 +49,11 @@ export default function FadeInView({ children, delay = 0, duration = 450, style 
         }
     }, [isFocused]);
 
-    // Use a key that changes with focus to ensure the component 
-    // and its animations are fully initialized when coming into view.
+    // Use a stable View and control animations via useEffect.
+    // Removing the focus-based 'key' because it causes unmounting 
+    // when system alerts or focus changes occur, which breaks callbacks.
     return (
         <Animated.View
-            key={isFocused ? 'visible' : 'hidden'}
             style={[
                 style,
                 {

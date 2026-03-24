@@ -1,6 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { mergeAchievementState } from '../constants/achievements';
 import { FirebaseService } from './FirebaseService';
+import { NotificationService } from './NotificationService';
+import { InventoryService } from './InventoryService';
 
 const KEYS = {
     USER_PROFILE: 'userProfile',
@@ -27,6 +29,14 @@ export const INITIAL_PROFILE = {
         notes: '',
     },
     customExercises: [],
+    inventory: [],
+    equipped: {
+        aura: null,
+        border: null,
+        title: null,
+    },
+    activeDungeon: null,
+    dungeonStartedAt: null,
 };
 
 function freshProfile() {
@@ -48,6 +58,10 @@ function normalizeProfile(p) {
         createdDate: p.createdDate || new Date().toISOString(),
         bodyStats: { ...INITIAL_PROFILE.bodyStats, ...(p.bodyStats || {}) },
         customExercises: p.customExercises || [],
+        inventory: p.inventory || [],
+        equipped: { ...INITIAL_PROFILE.equipped, ...(p.equipped || {}) },
+        activeDungeon: p.activeDungeon || null,
+        dungeonStartedAt: p.dungeonStartedAt || null,
     };
 }
 
@@ -149,6 +163,38 @@ export const StorageService = {
             AsyncStorage.setItem(KEYS.ACHIEVEMENTS, JSON.stringify(achievements)),
         ]);
 
+        // Check for new inventory unlocks
+        const newLoot = InventoryService.checkUnlocks(updatedProfile, newWorkouts);
+        if (newLoot.length > 0) {
+            updatedProfile.inventory = [...(updatedProfile.inventory || []), ...newLoot];
+            // Re-save profile with new loot
+            await AsyncStorage.setItem(KEYS.USER_PROFILE, JSON.stringify(updatedProfile));
+        }
+
+        // Check for Dungeon Clearance
+        if (updatedProfile.activeDungeon) {
+            const dungeons = [
+                { id: 'dungeon_beginner', target: 5, reward: 500 },
+                { id: 'dungeon_intermediate', target: 12, reward: 2500 },
+                { id: 'dungeon_advanced', target: 20, reward: 10000 }
+            ];
+            const active = dungeons.find(d => d.id === updatedProfile.activeDungeon);
+            if (active) {
+                const startT = new Date(updatedProfile.dungeonStartedAt || 0).getTime();
+                const count = newWorkouts.filter(w => new Date(w.date).getTime() >= startT).length;
+                if (count >= active.target) {
+                    updatedProfile.totalXP += active.reward;
+                    updatedProfile.activeDungeon = null;
+                    updatedProfile.dungeonStartedAt = null;
+                    // Add a special dungeon clear item to inventory if not present
+                    if (!updatedProfile.inventory.includes('title_slayer')) {
+                        updatedProfile.inventory.push('title_slayer');
+                    }
+                    await AsyncStorage.setItem(KEYS.USER_PROFILE, JSON.stringify(updatedProfile));
+                }
+            }
+        }
+
         if (updatedProfile.uid) {
             FirebaseService.syncUserData(updatedProfile.uid, {
                 name: updatedProfile.name,
@@ -158,9 +204,15 @@ export const StorageService = {
                 bestStreak: updatedProfile.bestStreak,
                 lastWorkoutDate: updatedProfile.lastWorkoutDate,
                 workouts: newWorkouts,
-                achievements: achievements
+                achievements: achievements,
+                inventory: updatedProfile.inventory,
+                equipped: updatedProfile.equipped,
+                activeDungeon: updatedProfile.activeDungeon
             });
         }
+
+        // Reset the 36-hour penalty timer
+        NotificationService.resetPenaltyQuestTimer();
 
         return { workouts: newWorkouts, achievements };
     },

@@ -32,7 +32,9 @@ export default function AchievementsScreen() {
 
     const leagueData = useMemo(() => {
         return HUNTER_LEAGUES.map((league) => {
-            const leagueAchievements = achievements.filter((a) => a.league === league.rank);
+            const leagueAchievements = achievements.filter(
+                (a) => a.league === league.rank && (!a.isHidden || a.unlocked)
+            );
             const unlocked = leagueAchievements.filter((a) => a.unlocked);
             const total = leagueAchievements.length;
             const unlockedCount = unlocked.length;

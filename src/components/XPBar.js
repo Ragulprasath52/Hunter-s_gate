@@ -9,30 +9,34 @@ export default function XPBar({ level, progress, currentLevelXP, xpRequired }) {
     const glowAnim = useRef(new Animated.Value(0.4)).current;
 
     useEffect(() => {
-        // Smooth spring animation for progress
+        // Smooth spring animation for progress - MUST be useNativeDriver: false for width
         Animated.spring(widthAnim, {
             toValue: progress,
             friction: 8,
             tension: 40,
             useNativeDriver: false,
         }).start();
+    }, [progress, widthAnim]);
 
+    useEffect(() => {
         // Pulsing glow effect
-        Animated.loop(
+        const animation = Animated.loop(
             Animated.sequence([
                 Animated.timing(glowAnim, {
                     toValue: 1,
                     duration: 1500,
-                    useNativeDriver: Platform.OS !== 'web',
+                    useNativeDriver: false, // Keep consistent with width-animating view
                 }),
                 Animated.timing(glowAnim, {
                     toValue: 0.4,
                     duration: 1500,
-                    useNativeDriver: Platform.OS !== 'web',
+                    useNativeDriver: false,
                 }),
             ])
-        ).start();
-    }, [progress, widthAnim, glowAnim]);
+        );
+        animation.start();
+        return () => animation.stop();
+    }, [glowAnim]);
 
     const barWidth = widthAnim.interpolate({
         inputRange: [0, 1],

@@ -17,6 +17,8 @@ import { useTheme } from '../context/ThemeContext';
 import { getMuscleGroupForExercise } from '../utils/workoutAnalytics';
 import FadeInView from '../components/FadeInView';
 import SuccessOverlay from '../components/SuccessOverlay';
+import { useSystemNotification } from '../context/SystemNotificationContext';
+import { InventoryService } from '../services/InventoryService';
 
 const EXERCISES = [
     'Bench Press',
@@ -47,6 +49,7 @@ export default function LogScreen() {
     const [profile, setProfile] = useState(null);
     const [workouts, setWorkouts] = useState([]);
     const [achievements, setAchievements] = useState([]);
+    const { showSystemAlert } = useSystemNotification();
     const [isLoading, setIsLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showSuccess, setShowSuccess] = useState(false);
@@ -159,6 +162,26 @@ export default function LogScreen() {
             setProfile(nextProfile);
             setWorkouts(updated);
             setAchievements(updatedAchievements);
+
+            // Trigger System Alerts for new unlocks
+            if (toUnlock.length > 0) {
+                toUnlock.forEach((achId, idx) => {
+                    const ach = updatedAchievements.find(a => a.id === achId);
+                    if (ach) {
+                        // Stagger multiple alerts slightly
+                        setTimeout(() => {
+                            showSystemAlert('Achievement Unlocked', ach.name, 'QUEST');
+                        }, idx * 1000);
+                    }
+                });
+            }
+
+            // Trigger System Alert for Level Up
+            if (levelData.level > oldLevel) {
+                setTimeout(() => {
+                    showSystemAlert('Level Up', `Reached Level ${levelData.level}`, 'LEVEL');
+                }, toUnlock.length * 1000 + 500);
+            }
 
             setShowSuccess(true); // Show success overlay
 
