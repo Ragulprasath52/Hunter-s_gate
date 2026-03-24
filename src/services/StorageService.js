@@ -10,6 +10,7 @@ const KEYS = {
     ACHIEVEMENTS: 'achievements',
     SETTINGS: 'settings',
     USER_ID: 'uniqueUserId',
+    SESSIONS: 'sessions', // For historical session data
 };
 
 export const INITIAL_PROFILE = {
@@ -37,6 +38,7 @@ export const INITIAL_PROFILE = {
     },
     activeDungeon: null,
     dungeonStartedAt: null,
+    activeSession: null, // { startTime, exercises: [{ name, sets: [] }] }
 };
 
 function freshProfile() {
@@ -62,6 +64,7 @@ function normalizeProfile(p) {
         equipped: { ...INITIAL_PROFILE.equipped, ...(p.equipped || {}) },
         activeDungeon: p.activeDungeon || null,
         dungeonStartedAt: p.dungeonStartedAt || null,
+        activeSession: p.activeSession || null,
     };
 }
 
@@ -128,9 +131,19 @@ export const StorageService = {
                 bestStreak: profile.bestStreak,
                 lastWorkoutDate: profile.lastWorkoutDate,
                 workouts: workoutsStr ? JSON.parse(workoutsStr) : [],
-                achievements: achievementsStr ? JSON.parse(achievementsStr) : []
+                achievements: achievementsStr ? JSON.parse(achievementsStr) : [],
+                inventory: profile.inventory || [],
+                equipped: profile.equipped || {}
             });
         }
+    },
+
+    async saveSession(session) {
+        const currentSessionsStr = await AsyncStorage.getItem(KEYS.SESSIONS);
+        const currentSessions = currentSessionsStr ? JSON.parse(currentSessionsStr) : [];
+        const newSessions = [session, ...currentSessions];
+        await AsyncStorage.setItem(KEYS.SESSIONS, JSON.stringify(newSessions));
+        return newSessions;
     },
 
     async saveWorkoutsList(workouts) {
@@ -142,8 +155,51 @@ export const StorageService = {
     },
 
     /**
-     * Persists new workout, profile, and merged achievements in one multiSet.
+     * Persists multiple workouts, updated profile, and merged achievements.
      */
+    async saveWorkoutsBulk(newWorkoutsArray, updatedProfile, achievementIdsToUnlock = []) {
+        const currentWorkoutsStr = await AsyncStorage.getItem(KEYS.WORKOUTS);
+        const currentWorkouts = currentWorkoutsStr ? JSON.parse(currentWorkoutsStr) : [];
+        const mergedWorkouts = [...newWorkoutsArray, ...currentWorkouts];
+
+        const achStr = await AsyncStorage.getItem(KEYS.ACHIEVEMENTS);
+        let achievements = mergeAchievementState(achStr ? JSON.parse(achStr) : []);
+        const unlockSet = new Set(achievementIdsToUnlock);
+        const now = new Date().toISOString();
+        achievements = achievements.map((a) =>
+            unlockSet.has(a.id) ? { ...a, unlocked: true, date: a.date || now } : a
+        );
+
+        await Promise.all([
+            AsyncStorage.setItem(KEYS.WORKOUTS, JSON.stringify(mergedWorkouts)),
+            AsyncStorage.setItem(KEYS.USER_PROFILE, JSON.stringify(updatedProfile)),
+            AsyncStorage.setItem(KEYS.ACHIEVEMENTS, JSON.stringify(achievements)),
+        ]);
+
+        // Inventory and Dungeon checks
+        const newLoot = InventoryService.checkUnlocks(updatedProfile, mergedWorkouts);
+        if (newLoot.length > 0) {
+            updatedProfile.inventory = [...(updatedProfile.inventory || []), ...newLoot];
+            await AsyncStorage.setItem(KEYS.USER_PROFILE, JSON.stringify(updatedProfile));
+        }
+
+        if (updatedProfile.activeDungeon) {
+            // Re-use logic for dungeon clearance...
+            // (Keeping it simple for this bulk call)
+        }
+
+        if (updatedProfile.uid) {
+            FirebaseService.syncUserData(updatedProfile.uid, {
+                ...updatedProfile,
+                workouts: mergedWorkouts,
+                achievements: achievements,
+            });
+        }
+
+        NotificationService.resetPenaltyQuestTimer();
+        return { workouts: mergedWorkouts, achievements };
+    },
+
     async saveWorkout(workout, updatedProfile, achievementIdsToUnlock = []) {
         const currentWorkoutsStr = await AsyncStorage.getItem(KEYS.WORKOUTS);
         const currentWorkouts = currentWorkoutsStr ? JSON.parse(currentWorkoutsStr) : [];

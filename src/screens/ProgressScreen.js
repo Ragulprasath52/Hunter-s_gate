@@ -15,6 +15,7 @@ import {
     bestLiftWithDate,
 } from '../utils/workoutAnalytics';
 import FadeInView from '../components/FadeInView';
+import SystemActionModal from '../components/SystemActionModal';
 
 const screenW = Dimensions.get('window').width;
 
@@ -29,6 +30,16 @@ export default function ProgressScreen() {
     const [arms, setArms] = useState('');
 
     const [isLoading, setIsLoading] = useState(true);
+    const [actionModal, setActionModal] = useState({
+        visible: false,
+        title: '',
+        message: '',
+        confirmText: 'Confirm',
+        cancelText: null,
+        onConfirm: () => {},
+        type: 'SYSTEM'
+    });
+
     const scanAnim = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
@@ -113,18 +124,36 @@ export default function ProgressScreen() {
     const heatmap = useMemo(() => buildHeatmapGrid(workouts, 12), [workouts]);
     const months = useMemo(() => monthStats(workouts), [workouts]);
 
+    const chartConfigRefined = useMemo(() => ({
+        ...chartConfig,
+        color: (opacity = 1) => `rgba(0, 212, 255, ${opacity})`,
+        propsForDots: {
+            r: "4",
+            strokeWidth: "2",
+            stroke: colors.primary
+        }
+    }), [chartConfig, colors.primary]);
+
     const bench = bestLiftWithDate(workouts, 'Bench Press');
     const squat = bestLiftWithDate(workouts, 'Squat');
     const deadlift = bestLiftWithDate(workouts, 'Deadlift');
 
     const saveBody = async () => {
-        const next = await StorageService.saveBodyStats({
-            bodyWeight,
-            chest,
-            waist,
-            arms,
+        setActionModal({
+            visible: true,
+            title: 'BIO-DATA SYNC',
+            message: 'Synchronize current physical evaluation parameters with the Hunter Registry?',
+            confirmText: 'SYNC ✦',
+            cancelText: 'ABORT',
+            type: 'SYSTEM',
+            onConfirm: async () => {
+                const next = await StorageService.saveBodyStats({
+                    bodyWeight, chest, waist, arms,
+                });
+                setProfile(next);
+                setActionModal(prev => ({ ...prev, visible: false }));
+            }
         });
-        setProfile(next);
     };
 
     const chartWidth = Math.min(screenW - SIZES.padding * 2, screenW - 32);
@@ -132,9 +161,10 @@ export default function ProgressScreen() {
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
             <FadeInView duration={600} style={{ flex: 1 }}>
-                <View style={[styles.header, { paddingTop: insets.top + 16, backgroundColor: colors.backgroundSecondary, borderBottomColor: colors.border }]}>
+                <View style={[styles.header, { paddingTop: insets.top + 16, backgroundColor: colors.backgroundSecondary, borderBottomColor: colors.primary }]}>
+                    <View style={[styles.glowLineTop, { backgroundColor: colors.primary }]} />
                     <Text style={[styles.title, { color: colors.primary }]}>⟨ SYSTEM STATUS: BIOMETRIC EVALUATION ⟩</Text>
-                    <Text style={[styles.sub, { color: colors.textSecondary }]}>Real-time analysis of hunter physical performance and potential.</Text>
+                    <Text style={[styles.sub, { color: colors.textSecondary }]}>ANALYZING HUNTER POTENTIAL... PHYSICAL GROWTH DETECTED.</Text>
                 </View>
 
                 {isLoading && workouts.length === 0 ? (
@@ -155,12 +185,12 @@ export default function ProgressScreen() {
                                         data={lineData}
                                         width={chartWidth}
                                         height={220}
-                                        chartConfig={chartConfig}
+                                        chartConfig={chartConfigRefined}
                                         bezier
                                         style={styles.chart}
                                         withShadow={false}
-                                        withInnerLines
-                                        withOuterLines
+                                        withInnerLines={false}
+                                        withOuterLines={true}
                                         fromZero
                                     />
                                 )}
@@ -197,82 +227,98 @@ export default function ProgressScreen() {
                         <View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.backgroundSecondary }]}>
                             <View style={[styles.glowLineTop, { backgroundColor: colors.primary }]} />
                             <Animated.View style={[styles.scanLine, { backgroundColor: colors.primary, transform: [{ translateY: scanTranslateY }] }]} />
-                            <BarChart
-                                data={barData}
-                                width={chartWidth}
-                                height={220}
-                                chartConfig={{
-                                    ...chartConfig,
-                                    color: (opacity = 1) => `rgba(0, 212, 255, ${opacity})`,
-                                }}
-                                style={styles.chart}
-                                fromZero
-                                showValuesOnTopOfBars
-                                yAxisLabel=""
-                                yAxisSuffix=""
-                            />
+                            {workouts.length === 0 ? (
+                                <Text style={[styles.empty, { color: colors.textSecondary }]}>Log raids to analyze volume history.</Text>
+                            ) : (
+                                <BarChart
+                                    data={barData}
+                                    width={chartWidth}
+                                    height={220}
+                                    chartConfig={{
+                                        ...chartConfig,
+                                        color: (opacity = 1) => `rgba(0, 212, 255, ${opacity})`,
+                                    }}
+                                    style={styles.chart}
+                                    fromZero
+                                    showValuesOnTopOfBars
+                                    yAxisLabel=""
+                                    yAxisSuffix=""
+                                />
+                            )}
                         </View>
                     </FadeInView>
 
                     <FadeInView delay={400}>
-                        <Text style={[styles.sectionTitle, { color: colors.warning }]}>⟨ PHYS: PERSONAL RECORDS ⟩</Text>
-                        <View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.backgroundSecondary }]}>
+                        <Text style={[styles.sectionTitle, { color: colors.warning }]}>⟨ ACHV: PEAK PERFORMANCE ⟩</Text>
+                        <View style={[styles.card, { borderColor: colors.warning, backgroundColor: colors.backgroundSecondary, borderWidth: 1.5 }]}>
                             <View style={[styles.glowLineTop, { backgroundColor: colors.warning }]} />
                             <Animated.View style={[styles.scanLine, { backgroundColor: colors.warning, transform: [{ translateY: scanTranslateY }] }]} />
-                            <Text style={[styles.prLine, { color: colors.textPrimary }]}>
-                                Bench: <Text style={{ color: colors.primary, fontWeight: 'bold' }}>{bench.weight}</Text> kg
-                                {bench.date ? <Text style={{ color: colors.textSecondary, fontSize: 12 }}> · {new Date(bench.date).toLocaleDateString()}</Text> : null}
-                            </Text>
-                            <Text style={[styles.prLine, { color: colors.textPrimary }]}>
-                                Squat: <Text style={{ color: colors.success, fontWeight: 'bold' }}>{squat.weight}</Text> kg
-                                {squat.date ? <Text style={{ color: colors.textSecondary, fontSize: 12 }}> · {new Date(squat.date).toLocaleDateString()}</Text> : null}
-                            </Text>
-                            <Text style={[styles.prLine, { color: colors.textPrimary }]}>
-                                Deadlift: <Text style={{ color: colors.warning, fontWeight: 'bold' }}>{deadlift.weight}</Text> kg
-                                {deadlift.date ? <Text style={{ color: colors.textSecondary, fontSize: 12 }}> · {new Date(deadlift.date).toLocaleDateString()}</Text> : null}
-                            </Text>
+                            
+                            <View style={styles.prBanner}>
+                                <Text style={[styles.prLabel, { color: colors.textSecondary }]}>BENCH PRESS</Text>
+                                <View style={styles.prValueRow}>
+                                    <Text style={[styles.prValue, { color: colors.primary }]}>{bench.weight}</Text>
+                                    <Text style={[styles.prUnit, { color: colors.textSecondary }]}>KG</Text>
+                                </View>
+                            </View>
+
+                            <View style={styles.prBanner}>
+                                <Text style={[styles.prLabel, { color: colors.textSecondary }]}>SQUAT</Text>
+                                <View style={styles.prValueRow}>
+                                    <Text style={[styles.prValue, { color: colors.success }]}>{squat.weight}</Text>
+                                    <Text style={[styles.prUnit, { color: colors.textSecondary }]}>KG</Text>
+                                </View>
+                            </View>
+
+                            <View style={styles.prBanner}>
+                                <Text style={[styles.prLabel, { color: colors.textSecondary }]}>DEADLIFT</Text>
+                                <View style={styles.prValueRow}>
+                                    <Text style={[styles.prValue, { color: colors.warning }]}>{deadlift.weight}</Text>
+                                    <Text style={[styles.prUnit, { color: colors.textSecondary }]}>KG</Text>
+                                </View>
+                            </View>
                         </View>
                     </FadeInView>
 
                     <FadeInView delay={500}>
-                        <Text style={[styles.sectionTitle, { color: colors.primary }]}>⟨ COMP: MONTHLY PERFORMANCE ⟩</Text>
-                        <View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.backgroundSecondary }]}>
+                        <Text style={[styles.sectionTitle, { color: colors.primary }]}>⟨ COMP: BATTLE LOG COMPARISON ⟩</Text>
+                        <View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.backgroundSecondary, borderWidth: 1.5 }]}>
                             <View style={[styles.glowLineTop, { backgroundColor: colors.primary }]} />
                             <Animated.View style={[styles.scanLine, { backgroundColor: colors.primary, transform: [{ translateY: scanTranslateY }] }]} />
                             <View style={styles.compareRow}>
-                                <Text style={[styles.compareHead, { color: colors.textSecondary }]} />
-                                <Text style={[styles.compareHead, { color: colors.primary }]}>This month</Text>
-                                <Text style={[styles.compareHead, { color: colors.textSecondary }]}>Last month</Text>
+                                <Text style={[styles.compareHead, { color: colors.textSecondary }]}>PARAMETER</Text>
+                                <Text style={[styles.compareHead, { color: colors.primary, textAlign: 'center' }]}>CURRENT</Text>
+                                <Text style={[styles.compareHead, { color: colors.textSecondary, textAlign: 'right' }]}>PREVIOUS</Text>
                             </View>
                             <View style={styles.compareRow}>
-                                <Text style={[styles.compareLabel, { color: colors.textPrimary }]}>Volume</Text>
-                                <Text style={[styles.compareVal, { color: colors.textPrimary }]}>{Math.round(months.thisMonth.volume)}</Text>
-                                <Text style={[styles.compareVal, { color: colors.textSecondary }]}>{Math.round(months.lastMonth.volume)}</Text>
+                                <Text style={[styles.compareLabel, { color: colors.textPrimary }]}>VOLUME (KG)</Text>
+                                <Text style={[styles.compareVal, { color: colors.primary }]}>{Math.round(months.thisMonth.volume)}</Text>
+                                <Text style={[styles.compareVal, { color: colors.textSecondary, textAlign: 'right' }]}>{Math.round(months.lastMonth.volume)}</Text>
                             </View>
                             <View style={styles.compareRow}>
-                                <Text style={[styles.compareLabel, { color: colors.textPrimary }]}>Workouts</Text>
-                                <Text style={[styles.compareVal, { color: colors.textPrimary }]}>{months.thisMonth.workouts}</Text>
-                                <Text style={[styles.compareVal, { color: colors.textSecondary }]}>{months.lastMonth.workouts}</Text>
+                                <Text style={[styles.compareLabel, { color: colors.textPrimary }]}>RAIDS COMPLETED</Text>
+                                <Text style={[styles.compareVal, { color: colors.primary }]}>{months.thisMonth.workouts}</Text>
+                                <Text style={[styles.compareVal, { color: colors.textSecondary, textAlign: 'right' }]}>{months.lastMonth.workouts}</Text>
                             </View>
                         </View>
                     </FadeInView>
 
                     <FadeInView delay={600}>
-                        <Text style={[styles.sectionTitle, { color: colors.success }]}>⟨ SYS: ACTIVITY MATRIX ⟩</Text>
-                        <View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.backgroundSecondary }]}>
+                        <Text style={[styles.sectionTitle, { color: colors.success }]}>⟨ SYS: RAID FREQUENCY MATRIX ⟩</Text>
+                        <View style={[styles.card, { borderColor: colors.success, backgroundColor: colors.backgroundSecondary, borderWidth: 1.5 }]}>
                             <View style={[styles.glowLineTop, { backgroundColor: colors.success }]} />
                             <Animated.View style={[styles.scanLine, { backgroundColor: colors.success, transform: [{ translateY: scanTranslateY }] }]} />
-                            <Text style={[styles.heatLegend, { color: colors.textSecondary }]}>Last 12 weeks · darker = more sessions</Text>
+                            <Text style={[styles.heatLegend, { color: colors.textSecondary, marginBottom: 16 }]}>TEMPORAL SESSION LOG · DARKER = HIGHER INTENSITY</Text>
                             <View style={styles.heatGrid}>
                                 {heatmap.grid.map((row, ri) => (
                                     <View key={ri} style={styles.heatRow}>
                                         {row.map((cell, ci) => {
                                             const c = cell.count;
-                                            let bg = colors.heatmapEmpty;
-                                            if (c === 1) bg = colors.transparentPrimaryMedium;
-                                            if (c >= 2) bg = colors.transparentPrimary;
-                                            if (c >= 4) bg = 'rgba(0, 255, 136, 0.35)';
-                                            return <View key={ci} style={[styles.heatCell, { backgroundColor: bg, borderColor: colors.border }]} />;
+                                            let bg = colors.heatmapEmpty || 'rgba(255,255,255,0.02)';
+                                            if (c === 1) bg = 'rgba(0, 212, 255, 0.2)';
+                                            if (c >= 2) bg = 'rgba(0, 212, 255, 0.5)';
+                                            if (c >= 4) bg = 'rgba(0, 255, 136, 0.8)';
+                                            return <View key={ci} style={[styles.heatCell, { backgroundColor: bg, borderColor: 'rgba(255,255,255,0.05)' }]} />;
                                         })}
                                     </View>
                                 ))}
@@ -302,6 +348,17 @@ export default function ProgressScreen() {
                 </ScrollView>
                 )}
             </FadeInView>
+
+            <SystemActionModal 
+                visible={actionModal.visible}
+                title={actionModal.title}
+                message={actionModal.message}
+                confirmText={actionModal.confirmText}
+                cancelText={actionModal.cancelText}
+                onConfirm={actionModal.onConfirm}
+                onCancel={() => setActionModal(prev => ({ ...prev, visible: false }))}
+                type={actionModal.type}
+            />
         </View>
     );
 }
@@ -386,8 +443,20 @@ const styles = StyleSheet.create({
         marginTop: 8,
         padding: 14,
         borderRadius: SIZES.radius,
-        borderWidth: 1,
+        borderWidth: 1.5,
         alignItems: 'center',
     },
-    saveBodyText: { fontWeight: 'bold', letterSpacing: 1 },
+    saveBodyText: { fontWeight: 'bold', letterSpacing: 2 },
+    prBanner: { 
+        flexDirection: 'row', 
+        justifyContent: 'space-between', 
+        alignItems: 'center',
+        paddingVertical: 12,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: 'rgba(255,255,255,0.1)'
+    },
+    prLabel: { fontSize: 10, fontWeight: 'bold', letterSpacing: 1.5 },
+    prValueRow: { flexDirection: 'row', alignItems: 'baseline' },
+    prValue: { fontSize: 24, fontWeight: 'bold' },
+    prUnit: { fontSize: 10, marginLeft: 4, fontWeight: 'bold' },
 });

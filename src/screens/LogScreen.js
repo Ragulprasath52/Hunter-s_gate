@@ -1,81 +1,91 @@
-import React, { useState, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, Alert, Platform, Modal, FlatList, Share } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { Picker } from '@react-native-picker/picker';
-import Slider from '@react-native-community/slider';
 import { StorageService } from '../services/StorageService';
 import {
     calculateWorkoutXP,
     calculateLevelProgress,
-    computeStreakAfterWorkout,
-    getPreviousMaxWeight,
     checkAchievements,
 } from '../utils/gameLogic';
 import { SIZES } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
-import { getMuscleGroupForExercise } from '../utils/workoutAnalytics';
 import FadeInView from '../components/FadeInView';
 import SuccessOverlay from '../components/SuccessOverlay';
 import { useSystemNotification } from '../context/SystemNotificationContext';
-import { InventoryService } from '../services/InventoryService';
+import ExerciseSessionCard from '../components/ExerciseSessionCard';
+import { Ionicons } from '@expo/vector-icons';
+import SystemActionModal from '../components/SystemActionModal';
 
-const EXERCISES = [
-    'Bench Press',
-    'Squat',
-    'Deadlift',
-    'Barbell Row',
-    'Pull-ups',
-    'Dumbbell Curls',
-    'Leg Press',
-    'Chest Flies',
-    'Overhead Press',
-    'Lat Pulldown',
-    'Tricep Pushdown',
+const DEFAULT_EXERCISES = [
+    'Bench Press', 'Squat', 'Deadlift', 'Barbell Row', 'Pull-ups',
+    'Dumbbell Curls', 'Leg Press', 'Chest Flies', 'Overhead Press',
+    'Lat Pulldown', 'Tricep Pushdown', 'Dips', 'Lunges', 'Pushups', 'Situps', 'Plank'
 ];
 
-export default function LogScreen() {
-    const { colors, isDark } = useTheme();
-    const insets = useSafeAreaInsets();
-    const [exercise, setExercise] = useState(EXERCISES[0]);
-    const [weight, setWeight] = useState('');
-    const [reps, setReps] = useState('');
-    const [sets, setSets] = useState('');
-    const [intensity, setIntensity] = useState(5);
-    const [durationMinutes, setDurationMinutes] = useState('');
-    const [notes, setNotes] = useState('');
+const BODYWEIGHT_EXERCISES = ['Pushups', 'Situps', 'Plank', 'Lunges', 'Pull-ups', 'Dips'];
 
-    const [recentWorkouts, setRecentWorkouts] = useState([]);
+export default function LogScreen() {
+    const { colors } = useTheme();
+    const insets = useSafeAreaInsets();
+    const { showSystemAlert } = useSystemNotification();
+
     const [profile, setProfile] = useState(null);
     const [workouts, setWorkouts] = useState([]);
     const [achievements, setAchievements] = useState([]);
-    const { showSystemAlert } = useSystemNotification();
+    const [activeSession, setActiveSession] = useState(null); // { startTime, exercises: [] }
     const [isLoading, setIsLoading] = useState(true);
-    const [isSubmitting, setIsSubmitting] = useState(false);
     const [showSuccess, setShowSuccess] = useState(false);
+    const [showExercisePicker, setShowExercisePicker] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [timer, setTimer] = useState(0);
+    const [isDungeonClearVisible, setIsDungeonClearVisible] = useState(false);
+    const [isLootCollected, setIsLootCollected] = useState(false);
+    const [summaryData, setSummaryData] = useState(null);
+    const [showGuide, setShowGuide] = useState(false);
+    const timerRef = useRef(null);
+
+    const [actionModal, setActionModal] = useState({
+        visible: false,
+        title: '',
+        message: '',
+        confirmText: 'Confirm',
+        cancelText: 'Cancel',
+        onConfirm: () => {},
+        type: 'SYSTEM'
+    });
 
     useFocusEffect(
         useCallback(() => {
             loadData();
-            // Reset state
-            setWeight('');
-            setReps('');
-            setSets('');
-            setIntensity(5);
-            setDurationMinutes('');
-            setNotes('');
         }, [])
     );
+
+    useEffect(() => {
+        if (activeSession && !timerRef.current) {
+            const start = new Date(activeSession.startTime).getTime();
+            timerRef.current = setInterval(() => {
+                setTimer(Math.floor((Date.now() - start) / 1000));
+            }, 1000);
+        } else if (!activeSession && timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
+            setTimer(0);
+        }
+        return () => {
+            if (timerRef.current) clearInterval(timerRef.current);
+        };
+    }, [activeSession]);
 
     const loadData = async () => {
         try {
             setIsLoading(true);
             const data = await StorageService.loadAllData();
             if (data) {
-                setRecentWorkouts(data.workouts.slice(0, 5));
                 setProfile(data.profile);
                 setWorkouts(data.workouts);
                 setAchievements(data.achievements);
+                setActiveSession(data.profile.activeSession || null);
             }
         } catch (e) {
             console.error('Loader error:', e);
@@ -84,405 +94,701 @@ export default function LogScreen() {
         }
     };
 
-    const levelInfo = useMemo(() => {
-        if (!profile) return null;
-        return calculateLevelProgress(profile.totalXP);
-    }, [profile]);
+    const persistActiveSession = async (session) => {
+        if (!profile) return;
+        const updatedProfile = { ...profile, activeSession: session };
+        await StorageService.saveUserProfile(updatedProfile);
+        setProfile(updatedProfile);
+    };
 
-    const muscleGroup = getMuscleGroupForExercise(exercise);
-
-    const handleLogWorkout = async () => {
-        // Set submitting state early to disable button
-        setIsSubmitting(true);
-
-        if (!weight || !reps || !sets) {
-            Alert.alert('System Error', 'Weight, reps, and sets are required.');
-            setIsSubmitting(false); // Reset submitting state on early exit
-            return;
-        }
-        if (!profile) {
-            Alert.alert('System Error', 'Hunter profile not loaded. Please wait or refresh.');
-            setIsSubmitting(false); // Reset submitting state on early exit
-            return;
-        }
-
-        const w = parseFloat(weight);
-        const r = parseInt(reps, 10);
-        const s = parseInt(sets, 10);
-        if (Number.isNaN(w) || Number.isNaN(r) || Number.isNaN(s)) {
-            Alert.alert('System Error', 'Enter valid numbers.');
-            setIsSubmitting(false);
-            return;
-        }
-
-        const vol = w * r * s;
-        const prevMax = getPreviousMaxWeight(workouts, exercise);
-        const isPR = w > prevMax;
-        const intensityNum = Math.min(10, Math.max(1, parseInt(intensity, 10) || 5)); // Added intensityNum calculation
-
-        const { streak, bestStreak } = computeStreakAfterWorkout(profile);
-        const xpGained = calculateWorkoutXP(vol, intensityNum, streak, isPR); // Used intensityNum
-
-        const newTotalXP = profile.totalXP + xpGained;
-        const levelData = calculateLevelProgress(newTotalXP);
-        const oldLevel = calculateLevelProgress(profile.totalXP).level; // for future level up tracking
-
-        const workout = {
+    const handleStartWorkout = () => {
+        const newSession = {
             id: Date.now().toString(),
-            date: new Date().toISOString(),
-            exercise,
-            weight: w,
-            reps: r,
-            sets: s,
-            intensity: intensityNum, // Used intensityNum
-            volume: vol,
-            xpGained,
-            isPR,
-            durationMinutes: durationMinutes ? parseFloat(durationMinutes) : null,
-            notes: notes.trim() || undefined,
+            startTime: new Date().toISOString(),
+            exercises: []
         };
+        setActiveSession(newSession);
+        persistActiveSession(newSession);
+        showSystemAlert('Raid Started', 'System monitoring active.', 'SYSTEM');
+    };
 
-        const nextProfile = {
-            ...profile,
-            totalXP: newTotalXP,
-            level: levelData.level,
-            streak,
-            bestStreak,
-            lastWorkoutDate: workout.date,
+    const checkIfBodyweight = (exerciseName) => {
+        // First check if it's a default bodyweight exercise
+        if (BODYWEIGHT_EXERCISES.includes(exerciseName) || exerciseName.toLowerCase().includes('(bw)')) return true;
+        
+        // Then check if it's a custom exercise with bodyweight type
+        const custom = profile?.customExercises?.find(ex => 
+            (typeof ex === 'string' ? ex : ex.name) === exerciseName
+        );
+        return custom?.type === 'bodyweight';
+    };
+
+    const handleAddExercise = (exerciseName) => {
+        if (!activeSession) return;
+        const newExercise = {
+            id: Date.now().toString() + Math.random(),
+            name: exerciseName,
+            sets: [{ id: Date.now().toString() + 1, weight: '', reps: '', isCompleted: false }]
         };
+        const updatedSession = {
+            ...activeSession,
+            exercises: [...activeSession.exercises, newExercise]
+        };
+        setActiveSession(updatedSession);
+        persistActiveSession(updatedSession);
+        setShowExercisePicker(false);
+        setSearchQuery('');
+    };
 
-        const combinedWorkouts = [workout, ...workouts];
-        const toUnlock = checkAchievements(nextProfile, combinedWorkouts, achievements);
+    const getExerciseHistory = (exerciseName) => {
+        // Find the last 5 workouts for this specific exercise
+        const history = workouts
+            .filter(w => w.exercise === exerciseName)
+            .sort((a, b) => new Date(b.date) - new Date(a.date))
+            .slice(0, 5);
+        
+        // Return a list of string representations "Weight x Reps"
+        return history.map(w => `${w.weight} x ${w.reps}`);
+    };
 
+    const handleRemoveExercise = (exerciseId) => {
+        const updatedExercises = activeSession.exercises.filter(ex => ex.id !== exerciseId);
+        const updatedSession = { ...activeSession, exercises: updatedExercises };
+        setActiveSession(updatedSession);
+        persistActiveSession(updatedSession);
+    };
+
+    const handleAddSet = (exerciseId) => {
+        const updatedExercises = activeSession.exercises.map(ex => {
+            if (ex.id === exerciseId) {
+                const lastSet = ex.sets[ex.sets.length - 1];
+                return {
+                    ...ex,
+                    sets: [...ex.sets, { 
+                        id: Date.now().toString() + Math.random(), 
+                        weight: lastSet?.weight || '', 
+                        reps: lastSet?.reps || '', 
+                        isCompleted: false 
+                    }]
+                };
+            }
+            return ex;
+        });
+        const updatedSession = { ...activeSession, exercises: updatedExercises };
+        setActiveSession(updatedSession);
+        persistActiveSession(updatedSession);
+    };
+
+    const handleUpdateSet = (exerciseId, setId, field, value) => {
+        const updatedExercises = activeSession.exercises.map(ex => {
+            if (ex.id === exerciseId) {
+                return {
+                    ...ex,
+                    sets: ex.sets.map(s => (s.id === setId ? { ...s, [field]: value } : s))
+                };
+            }
+            return ex;
+        });
+        const updatedSession = { ...activeSession, exercises: updatedExercises };
+        setActiveSession(updatedSession);
+        persistActiveSession(updatedSession);
+    };
+
+    const handleToggleSetComplete = (exerciseId, setId) => {
+        const updatedExercises = activeSession.exercises.map(ex => {
+            if (ex.id === exerciseId) {
+                return {
+                    ...ex,
+                    sets: ex.sets.map(s => {
+                        if (s.id === setId) {
+                            const newState = !s.isCompleted;
+                            if (newState) {
+                                showSystemAlert('Set Logged', 'Initiating recovery.', 'SYSTEM');
+                            }
+                            return { ...s, isCompleted: newState };
+                        }
+                        return s;
+                    })
+                };
+            }
+            return ex;
+        });
+        const updatedSession = { ...activeSession, exercises: updatedExercises };
+        setActiveSession(updatedSession);
+        persistActiveSession(updatedSession);
+    };
+
+    const handleDeleteSet = (exerciseId, setId) => {
+        const updatedExercises = activeSession.exercises.map(ex => {
+            if (ex.id === exerciseId) {
+                return {
+                    ...ex,
+                    sets: ex.sets.filter(s => s.id !== setId)
+                };
+            }
+            return ex;
+        });
+        const updatedSession = { ...activeSession, exercises: updatedExercises };
+        setActiveSession(updatedSession);
+        persistActiveSession(updatedSession);
+    };
+
+    const handleFinishWorkout = async () => {
+        if (!activeSession || activeSession.exercises.length === 0) {
+            setActionModal({
+                visible: true,
+                title: 'System Message',
+                message: 'No exercises logged in this raid. Abandon current session?',
+                confirmText: 'Abandon',
+                cancelText: 'Keep Going',
+                type: 'DANGER',
+                onConfirm: () => {
+                    setActiveSession(null);
+                    persistActiveSession(null);
+                    setActionModal(prev => ({ ...prev, visible: false }));
+                }
+            });
+            return;
+        }
+
+        setActionModal({
+            visible: true,
+            title: 'Finish Raid',
+            message: 'Ready to submit your battle data to the system and claim your XP?',
+            confirmText: 'Submit ✦',
+            cancelText: 'Cancel',
+            type: 'SUCCESS',
+            onConfirm: () => {
+                setActionModal(prev => ({ ...prev, visible: false }));
+                processWorkoutCompletion();
+            }
+        });
+    };
+
+    const processWorkoutCompletion = async () => {
         try {
-            const { workouts: updated, achievements: updatedAchievements } = await StorageService.saveWorkout(workout, nextProfile, toUnlock);
+            setIsLoading(true);
+            const endTime = new Date().toISOString();
+            const session = { ...activeSession, endTime };
+
+            // Calculate total XP and PRs
+            let totalXPGained = 0;
+            const newIndividualWorkouts = [];
             
-            // Update local state immediately with results from save
-            setRecentWorkouts(updated.slice(0, 5));
-            setProfile(nextProfile);
-            setWorkouts(updated);
-            setAchievements(updatedAchievements);
+            session.exercises.forEach(ex => {
+                const completedSets = ex.sets.filter(s => s.isCompleted);
+                if (completedSets.length === 0) return;
 
-            // Trigger System Alerts for new unlocks
-            if (toUnlock.length > 0) {
-                toUnlock.forEach((achId, idx) => {
-                    const ach = updatedAchievements.find(a => a.id === achId);
-                    if (ach) {
-                        // Stagger multiple alerts slightly
-                        setTimeout(() => {
-                            showSystemAlert('Achievement Unlocked', ach.name, 'QUEST');
-                        }, idx * 1000);
-                    }
+                const isBW = checkIfBodyweight(ex.name);
+                const maxWeight = isBW ? 0 : Math.max(...completedSets.map(s => parseFloat(s.weight) || 0));
+                
+                // For BW exercises, we use a virtual weight of 1kg per rep for volume calculation 
+                // or just base it on intensity. Let's use 10kg as a base 'difficulty' weight for XP.
+                const totalVolume = completedSets.reduce((sum, s) => {
+                    const w = isBW ? 20 : (parseFloat(s.weight) || 0); // 20kg base for BW volume
+                    return sum + w * (parseInt(s.reps) || 0);
+                }, 0);
+                
+                const xp = calculateWorkoutXP(totalVolume, 7, profile.streak, false);
+                totalXPGained += xp;
+
+                newIndividualWorkouts.push({
+                    id: Date.now().toString() + Math.random(),
+                    date: endTime,
+                    exercise: ex.name,
+                    weight: maxWeight,
+                    reps: Math.max(...completedSets.map(s => parseInt(s.reps) || 0)),
+                    sets: completedSets.length,
+                    volume: totalVolume,
+                    xpGained: xp,
+                    isPR: false,
+                    isBodyweight: isBW
                 });
-            }
+            });
 
-            // Trigger System Alert for Level Up
-            if (levelData.level > oldLevel) {
-                setTimeout(() => {
-                    showSystemAlert('Level Up', `Reached Level ${levelData.level}`, 'LEVEL');
-                }, toUnlock.length * 1000 + 500);
-            }
+            const newTotalXP = profile.totalXP + totalXPGained;
+            const levelData = calculateLevelProgress(newTotalXP);
+            const oldLevel = profile.level;
 
-            setShowSuccess(true); // Show success overlay
+            const nextProfile = {
+                ...profile,
+                totalXP: newTotalXP,
+                level: levelData.level,
+                lastWorkoutDate: endTime,
+                activeSession: null 
+            };
 
-            setWeight('');
-            setReps('');
-            setSets('');
-            setIntensity(5);
-            setDurationMinutes('');
-            setNotes('');
+            const updatedWorkouts = [...newIndividualWorkouts, ...workouts];
+            const toUnlock = checkAchievements(nextProfile, updatedWorkouts, achievements);
+
+            await StorageService.saveWorkoutsBulk(newIndividualWorkouts, nextProfile, toUnlock);
+            await StorageService.saveSession(session);
+
+            setActiveSession(null);
+            persistActiveSession(null); 
+            
+            setSummaryData({
+                xp: totalXPGained,
+                volume: newIndividualWorkouts.reduce((s, w) => s + w.volume, 0),
+                duration: formatTime(timer),
+                rank: totalXPGained > 1000 ? 'S' : totalXPGained > 700 ? 'A' : totalXPGained > 400 ? 'B' : 'C',
+                newLevel: levelData.level > oldLevel ? levelData.level : null,
+                achievements: toUnlock.length > 0 ? toUnlock.length : null
+            });
+            
+            loadData();
+            setIsLootCollected(false);
+            setIsDungeonClearVisible(true);
         } catch (error) {
-            console.error('Save failed:', error);
-            Alert.alert('Error', 'Failed to save workout. Please try again.');
+            console.error('Completion error:', error);
+            Alert.alert('System Error', 'Failed to synchronize battle data.');
         } finally {
-            setIsSubmitting(false);
+            setIsLoading(false);
         }
     };
 
-    const handleDeleteWorkout = (workoutToDelete) => {
-        Alert.alert(
-            "DELETE RECORD",
-            `Do you want to erase this ${workoutToDelete.exercise} raid? You will lose ${workoutToDelete.xpGained} XP.`,
-            [
-                { text: "CANCEL", style: "cancel" },
-                { 
-                    text: "ERASE", 
-                    style: "destructive",
-                    onPress: async () => {
-                        const newWorkouts = workouts.filter(w => w.id !== workoutToDelete.id);
-                        await StorageService.saveWorkoutsList(newWorkouts);
-                        
-                        const newXP = Math.max(0, profile.totalXP - workoutToDelete.xpGained);
-                        const levelData = calculateLevelProgress(newXP);
-                        const newProfile = { ...profile, totalXP: newXP, level: levelData.level };
-                        
-                        await StorageService.saveUserProfile(newProfile);
-                        
-                        setWorkouts(newWorkouts);
-                        setRecentWorkouts(newWorkouts.slice(0, 5));
-                        setProfile(newProfile);
-                    }
-                }
-            ]
-        );
+    const formatTime = (seconds) => {
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        const s = seconds % 60;
+        return `${h > 0 ? h + ':' : ''}${m < 10 && h > 0 ? '0' + m : m}:${s < 10 ? '0' + s : s}`;
     };
 
-    const availableExercises = useMemo(() => {
-        const customs = profile?.customExercises || [];
-        return [...EXERCISES, ...customs];
-    }, [profile]);
+    const filteredExercises = useMemo(() => {
+        const all = [...DEFAULT_EXERCISES, ...(profile?.customExercises || [])];
+        if (!searchQuery) return all.sort();
+        return all.filter(ex => ex.toLowerCase().includes(searchQuery.toLowerCase())).sort();
+    }, [profile, searchQuery]);
 
-    // Conditional rendering for loading state
-    if (!profile || !levelInfo) {
+    if (isLoading && !profile) {
         return (
             <View style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
-                <Text style={{ color: colors.primary, letterSpacing: 3, fontSize: 12 }}>INITIALIZING HUNTER SYSTEM...</Text>
+                <Text style={{ color: colors.primary, letterSpacing: 3, fontSize: 12 }}>INITIALIZING SYSTEM...</Text>
             </View>
         );
     }
 
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
-            <FadeInView duration={400} style={{ flex: 1 }}>
-                <View style={[styles.header, { paddingTop: insets.top + 16, backgroundColor: colors.backgroundSecondary, borderBottomColor: colors.border }]}>
-                    <Text style={[styles.title, { color: colors.primary }]}>⟨ LOG RAID ⟩</Text>
-                    <Text style={[styles.hint, { color: colors.textSecondary }]}>Record your training. The system calculates XP.</Text>
-                </View>
-
-            <ScrollView style={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-                <View style={[styles.formCard, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
-                    <View style={[styles.glowLineTop, { backgroundColor: colors.primary }]} />
-                    
-                    <Text style={[styles.label, { color: colors.textSecondary }]}>TARGET EXERCISE</Text>
-                    <View style={[styles.pickerWrap, { borderColor: colors.border, backgroundColor: colors.backgroundSecondary }]}>
-                        <Picker
-                            selectedValue={exercise}
-                            onValueChange={setExercise}
-                            dropdownIconColor={colors.primary}
-                            style={[styles.picker, { color: colors.textPrimary }]}
-                            itemStyle={Platform.OS === 'ios' ? { color: colors.textPrimary, fontSize: 16 } : undefined}
-                            mode="dropdown"
-                        >
-                            {availableExercises.map((ex) => (
-                                <Picker.Item 
-                                    key={ex} 
-                                    label={ex} 
-                                    value={ex} 
-                                    color={colors.textPrimary} 
-                                />
-                            ))}
-                        </Picker>
-                    </View>
-
-                    <Text style={[styles.muscleLine, { color: colors.success }]}>
-                        Muscle group: <Text style={{ fontWeight: 'bold' }}>{muscleGroup}</Text>
-                    </Text>
-
-                    <View style={styles.row}>
-                        <View style={styles.inputGroup}>
-                            <Text style={[styles.label, { color: colors.textSecondary }]}>WEIGHT (KG)</Text>
-                            <TextInput
-                                style={[styles.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.primary }]}
-                                value={weight}
-                                onChangeText={setWeight}
-                                keyboardType="decimal-pad"
-                                placeholderTextColor={colors.textSecondary}
-                                placeholder="0"
-                            />
+            <View style={[styles.header, { 
+                paddingTop: insets.top + 16, 
+                backgroundColor: colors.backgroundSecondary, 
+                borderBottomColor: colors.border,
+                paddingBottom: activeSession ? 10 : 16
+            }]}>
+                {activeSession ? (
+                    <View style={styles.sessionHeaderRow}>
+                        <View>
+                            <Text style={[styles.title, { color: colors.primary }]}>⟨ ACTIVE RAID ⟩</Text>
+                            <Text style={[styles.timer, { color: colors.textPrimary }]}>{formatTime(timer)}</Text>
                         </View>
-                        <View style={styles.inputGroup}>
-                            <Text style={[styles.label, { color: colors.textSecondary }]}>REPS</Text>
-                            <TextInput
-                                style={[styles.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.primary }]}
-                                value={reps}
-                                onChangeText={setReps}
-                                keyboardType="number-pad"
-                                placeholderTextColor={colors.textSecondary}
-                                placeholder="0"
-                            />
-                        </View>
-                        <View style={styles.inputGroup}>
-                            <Text style={[styles.label, { color: colors.textSecondary }]}>SETS</Text>
-                            <TextInput
-                                style={[styles.input, { borderColor: colors.border, backgroundColor: colors.background, color: colors.primary }]}
-                                value={sets}
-                                onChangeText={setSets}
-                                keyboardType="number-pad"
-                                placeholderTextColor={colors.textSecondary}
-                                placeholder="0"
-                            />
-                        </View>
-                    </View>
-
-                    <Text style={[styles.label, { color: colors.textSecondary }]}>INTENSITY TIER (1–10): <Text style={{ color: colors.warning, fontWeight: 'bold' }}>{Math.round(intensity)}</Text></Text>
-                    <Slider
-                        style={styles.slider}
-                        minimumValue={1}
-                        maximumValue={10}
-                        step={1}
-                        value={intensity}
-                        onValueChange={setIntensity}
-                        minimumTrackTintColor={colors.warning}
-                        maximumTrackTintColor={colors.border}
-                        thumbTintColor={colors.warning}
-                    />
-
-                    <Text style={[styles.label, { color: colors.textSecondary, marginTop: 8 }]}>DURATION (MIN) — optional</Text>
-                    <TextInput
-                        style={[styles.inputFull, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]}
-                        value={durationMinutes}
-                        onChangeText={setDurationMinutes}
-                        keyboardType="decimal-pad"
-                        placeholderTextColor={colors.textSecondary}
-                        placeholder="e.g. 45"
-                    />
-
-                    <Text style={[styles.label, { color: colors.textSecondary }]}>NOTES — optional</Text>
-                    <TextInput
-                        style={[styles.notes, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]}
-                        value={notes}
-                        onChangeText={setNotes}
-                        placeholderTextColor={colors.textSecondary}
-                        placeholder="Form cues, pain, PR attempt..."
-                        multiline
-                    />
-
-                    <Text style={[styles.volumePreview, { color: colors.textPrimary }]}>
-                        Session volume:{' '}
-                        <Text style={{ color: colors.warning, fontWeight: 'bold', fontSize: 16 }}>
-                            {weight && reps && sets ? `${(parseFloat(weight) || 0) * (parseInt(reps, 10) || 0) * (parseInt(sets, 10) || 0)} kg` : '—'}
-                        </Text>
-                    </Text>
-
-                    <TouchableOpacity
-                        activeOpacity={0.8}
-                        style={[
-                            styles.submitBtn,
-                            { borderColor: colors.primary, backgroundColor: colors.primaryGlow || colors.transparentPrimary },
-                            isSubmitting && { opacity: 0.5 }
-                        ]}
-                        onPress={handleLogWorkout}
-                        disabled={isSubmitting || isLoading}
-                    >
-                        <Text style={[styles.submitBtnText, { color: colors.primary }]}>
-                            {isSubmitting ? 'SYNCING...' : 'RECORD RAID ✦'}
-                        </Text>
-                    </TouchableOpacity>
-                </View>
-
-                <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>⟨ RECENT HISTORY ⟩</Text>
-                {recentWorkouts.length === 0 ? (
-                    <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No workout history yet. The dungeon awaits.</Text>
-                ) : (
-                    recentWorkouts.map((w) => (
-                        <FadeInView key={w.id} delay={100}>
-                            <TouchableOpacity 
-                                activeOpacity={0.7} 
-                                onLongPress={() => handleDeleteWorkout(w)}
-                                style={[styles.historyCard, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border, borderLeftColor: colors.primary }]}
-                            >
-                                <View style={{ flex: 1 }}>
-                                    <Text style={[styles.historyName, { color: colors.primary }]}>{w.exercise}</Text>
-                                    <Text style={[styles.historyStats, { color: colors.textPrimary }]}>
-                                        {w.weight} kg × {w.reps} × {w.sets} · vol <Text style={{color: colors.warning}}>{Math.round(w.volume || 0)}</Text>
-                                    </Text>
-                                    <Text style={[styles.historyDate, { color: colors.textSecondary }]}>{new Date(w.date).toLocaleString()} (Long press to delete)</Text>
-                                </View>
-                                <View style={[styles.historyXpBadge, { borderColor: colors.success, backgroundColor: colors.successGlow || colors.transparentSuccess }]}>
-                                    <Text style={[styles.historyXpText, { color: colors.success }]}>+{w.xpGained} XP</Text>
-                                </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                            <TouchableOpacity onPress={() => setShowGuide(true)}>
+                                <Ionicons name="help-circle-outline" size={24} color={colors.primary} />
                             </TouchableOpacity>
-                        </FadeInView>
-                    ))
+                            <TouchableOpacity 
+                                style={[styles.finishBtn, { backgroundColor: colors.primary }]} 
+                                onPress={handleFinishWorkout}
+                            >
+                                <Text style={styles.finishBtnText}>FINISH</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                ) : (
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', paddingHorizontal: 20 }}>
+                        <View style={{ width: 40 }} />
+                        <Text style={[styles.title, { color: colors.primary }]}>
+                            {showSuccess ? '⟨ RAID HISTORY ⟩' : '⟨ LOG RAID ⟩'}
+                        </Text>
+                        <TouchableOpacity onPress={() => setShowGuide(true)} style={{ width: 40, alignItems: 'center' }}>
+                            <Ionicons name="help-circle-outline" size={24} color={colors.primary} />
+                        </TouchableOpacity>
+                    </View>
                 )}
-                <View style={{ height: 48 }} />
+            </View>
+
+            <ScrollView 
+                style={styles.content} 
+                keyboardShouldPersistTaps="handled" 
+                showsVerticalScrollIndicator={false}
+            >
+                {!activeSession ? (
+                    <FadeInView style={styles.emptyContainer}>
+                        <View style={[styles.startCard, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
+                            <View style={[styles.accentLine, { backgroundColor: colors.primary }]} />
+                            <Ionicons name="flash-outline" size={40} color={colors.primary} style={{ marginBottom: 16 }} />
+                            <Text style={[styles.startTitle, { color: colors.textPrimary }]}>No active raid detected.</Text>
+                            <Text style={[styles.startSubtitle, { color: colors.textSecondary }]}>
+                                Start a session to track your growth and earn XP.
+                            </Text>
+                            <TouchableOpacity 
+                                style={[styles.startBtn, { backgroundColor: colors.primary }]} 
+                                onPress={handleStartWorkout}
+                            >
+                                <Text style={styles.startBtnText}>START NEW RAID</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </FadeInView>
+                ) : (
+                    <View style={styles.sessionContainer}>
+                        {activeSession.exercises.map((ex) => (
+                            <ExerciseSessionCard
+                                key={ex.id}
+                                exercise={ex}
+                                onAddSet={() => handleAddSet(ex.id)}
+                                onDeleteSet={(setId) => handleDeleteSet(ex.id, setId)}
+                                onUpdateSet={(setId, field, val) => handleUpdateSet(ex.id, setId, field, val)}
+                                onToggleSetComplete={(setId) => handleToggleSetComplete(ex.id, setId)}
+                                onRemoveExercise={() => handleRemoveExercise(ex.id)}
+                                historyData={getExerciseHistory(ex.name)}
+                                isBodyweight={checkIfBodyweight(ex.name)}
+                            />
+                        ))}
+
+                        <TouchableOpacity 
+                            style={[styles.addExerciseBtn, { borderColor: colors.primary }]} 
+                            onPress={() => setShowExercisePicker(true)}
+                        >
+                            <Ionicons name="add-circle-outline" size={24} color={colors.primary} />
+                            <Text style={[styles.addExerciseText, { color: colors.primary }]}>ADD EXERCISE</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity 
+                            style={styles.cancelBtn} 
+                            onPress={() => {
+                                setActionModal({
+                                    visible: true,
+                                    title: 'Abandon Raid',
+                                    message: 'All current battle data will be lost. Are you sure you want to retreat?',
+                                    confirmText: 'Abandon',
+                                    cancelText: 'Cancel',
+                                    type: 'DANGER',
+                                    onConfirm: () => {
+                                        setActiveSession(null);
+                                        persistActiveSession(null);
+                                        setActionModal(prev => ({ ...prev, visible: false }));
+                                    }
+                                });
+                            }}
+                        >
+                            <Text style={[styles.cancelBtnText, { color: colors.danger || '#ff4444' }]}>ABANDON RAID</Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
+                <View style={{ height: 100 }} />
             </ScrollView>
-            </FadeInView>
+
+            <Modal visible={showExercisePicker} animationType="slide" transparent>
+                <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.8)' }]}>
+                    <View style={[styles.modalContent, { backgroundColor: colors.background, borderTopColor: colors.primary }]}>
+                        <View style={styles.modalHeader}>
+                            <Text style={[styles.modalTitle, { color: colors.primary }]}>⟨ SELECT EXERCISE ⟩</Text>
+                            <TouchableOpacity onPress={() => setShowExercisePicker(false)}>
+                                <Ionicons name="close" size={24} color={colors.textPrimary} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <TextInput
+                            style={[styles.searchInput, { backgroundColor: colors.backgroundSecondary, color: colors.textPrimary, borderColor: colors.border }]}
+                            placeholder="Search system database..."
+                            placeholderTextColor={colors.textSecondary}
+                            value={searchQuery}
+                            onChangeText={setSearchQuery}
+                        />
+
+                        <FlatList
+                            data={filteredExercises}
+                            keyExtractor={(item) => item}
+                            renderItem={({ item }) => (
+                                <TouchableOpacity 
+                                    style={[styles.exerciseItem, { borderBottomColor: colors.border }]}
+                                    onPress={() => handleAddExercise(item)}
+                                >
+                                    <Text style={[styles.exerciseName, { color: colors.textPrimary }]}>{item}</Text>
+                                    <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+                                </TouchableOpacity>
+                            )}
+                            ListEmptyComponent={
+                                <Text style={[styles.emptySearchText, { color: colors.textSecondary }]}>No matching record found.</Text>
+                            }
+                        />
+                    </View>
+                </View>
+            </Modal>
 
             <SuccessOverlay visible={showSuccess} onAnimationEnd={() => setShowSuccess(false)} />
+            
+            <SystemActionModal 
+                visible={actionModal.visible}
+                title={actionModal.title}
+                message={actionModal.message}
+                confirmText={actionModal.confirmText}
+                cancelText={actionModal.cancelText}
+                onConfirm={actionModal.onConfirm}
+                onCancel={() => setActionModal(prev => ({ ...prev, visible: false }))}
+                type={actionModal.type}
+            />
+
+            {/* Dungeon Clear Modal */}
+            <Modal
+                visible={isDungeonClearVisible}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={() => setIsDungeonClearVisible(false)}
+            >
+                <View style={styles.clearOverlay}>
+                    <FadeInView duration={600} style={[styles.clearContent, { backgroundColor: colors.backgroundSecondary, borderColor: colors.primary }]}>
+                        <View style={[styles.glowLineTop, { backgroundColor: colors.primary }]} />
+                        
+                        <Ionicons 
+                            name={isLootCollected ? "shield-checkmark" : "cube-outline"} 
+                            size={60} 
+                            color={colors.primary} 
+                            style={{ alignSelf: 'center', marginBottom: 10 }} 
+                        />
+                        <Text style={[styles.clearTitle, { color: colors.primary }]}>
+                            {isLootCollected ? '⟨ DUNGEON CLEARED ⟩' : '⟨ REWARD PENDING ⟩'}
+                        </Text>
+                        
+                        {!isLootCollected ? (
+                            <View style={{ alignItems: 'center', marginVertical: 40 }}>
+                                <Text style={{ color: colors.textSecondary, textAlign: 'center', marginBottom: 20 }}>The system has dropped a reward crate. Extract loot to claim your rewards.</Text>
+                                <TouchableOpacity 
+                                    style={[styles.collectBtn, { backgroundColor: colors.accent || colors.primary, minWidth: 200 }]} 
+                                    onPress={() => setIsLootCollected(true)}
+                                >
+                                    <Text style={styles.collectBtnText}>EXTRACT LOOT ✦</Text>
+                                </TouchableOpacity>
+                            </View>
+                        ) : (
+                            <>
+                                <View style={[styles.raidRankBadge, { borderColor: colors.success }]}>
+                                    <Text style={[styles.raidRankText, { color: colors.success }]}>RAID RANK: {summaryData?.rank}</Text>
+                                </View>
+
+                                <View style={styles.clearStatsGrid}>
+                                    <View style={styles.clearStatItem}>
+                                        <Text style={[styles.clearStatLabel, { color: colors.textSecondary }]}>ENERGY (XP) EXTRACTED</Text>
+                                        <Text style={[styles.clearStatValue, { color: colors.primary }]}>+{summaryData?.xp} XP</Text>
+                                    </View>
+                                    <View style={styles.clearStatItem}>
+                                        <Text style={[styles.clearStatLabel, { color: colors.textSecondary }]}>VOLUME CLEARED</Text>
+                                        <Text style={[styles.clearStatValue, { color: colors.textPrimary }]}>{Math.floor(summaryData?.volume || 0)} KG</Text>
+                                    </View>
+                                    <View style={styles.clearStatItem}>
+                                        <Text style={[styles.clearStatLabel, { color: colors.textSecondary }]}>RAID TIME</Text>
+                                        <Text style={[styles.clearStatValue, { color: colors.textPrimary }]}>{summaryData?.duration}</Text>
+                                    </View>
+                                </View>
+
+                                {summaryData?.newLevel && (
+                                    <View style={[styles.lootItem, { borderColor: colors.warning, backgroundColor: 'rgba(255,215,0,0.1)' }]}>
+                                        <Ionicons name="trending-up" size={20} color={colors.warning} />
+                                        <Text style={[styles.lootText, { color: colors.warning }]}>SYSTEM UPDATE: REACHED LEVEL {summaryData.newLevel}</Text>
+                                    </View>
+                                )}
+
+                                {summaryData?.achievements && (
+                                    <View style={[styles.lootItem, { borderColor: colors.accent || colors.primary, backgroundColor: 'rgba(0,212,255,0.1)' }]}>
+                                        <Ionicons name="trophy" size={20} color={colors.accent || colors.primary} />
+                                        <Text style={[styles.lootText, { color: colors.accent || colors.primary }]}>NEW LOOT UNLOCKED: {summaryData.achievements} ITEMS</Text>
+                                    </View>
+                                )}
+
+                                <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+                                    <TouchableOpacity 
+                                        style={[styles.collectBtn, { backgroundColor: colors.backgroundSecondary, borderColor: colors.primary, borderWidth: 1, flex: 1, flexDirection: 'row', gap: 6, opacity: 0.9 }]} 
+                                        onPress={() => Share.share({ 
+                                            message: `RANK: ${summaryData?.rank} RAID CLEARED! ⚔️\nGain: +${summaryData?.xp} XP\nVolume: ${Math.floor(summaryData?.volume || 0)} KG\nJoin Hunter Gate and begin your awakening!` 
+                                        })}
+                                    >
+                                        <Ionicons name="share-social-outline" size={16} color={colors.primary} />
+                                        <Text style={[styles.collectBtnText, { color: colors.primary, fontSize: 10 }]}>SHARE REPORT</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity 
+                                        style={[styles.collectBtn, { backgroundColor: colors.primary, flex: 1.5 }]} 
+                                        onPress={() => setIsDungeonClearVisible(false)}
+                                    >
+                                        <Text style={styles.collectBtnText}>CLOSE FILE</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            </>
+                        )}
+                    </FadeInView>
+                </View>
+            </Modal>
+
+            {/* Raid Guide Modal */}
+            <Modal visible={showGuide} transparent animationType="fade" onRequestClose={() => setShowGuide(false)}>
+                <View style={[styles.clearOverlay, { backgroundColor: 'rgba(0,0,0,0.85)' }]}>
+                    <FadeInView style={[styles.clearContent, { backgroundColor: colors.backgroundSecondary, borderColor: colors.primary, maxHeight: '80%' }]}>
+                        <View style={[styles.guideHeader, { borderBottomColor: colors.border }]}>
+                            <Ionicons name="documents-outline" size={24} color={colors.primary} />
+                            <Text style={[styles.guideTitle, { color: colors.textPrimary }]}>RAID MANUAL</Text>
+                            <TouchableOpacity onPress={() => setShowGuide(false)}>
+                                <Ionicons name="close" size={24} color={colors.textSecondary} />
+                            </TouchableOpacity>
+                        </View>
+                        <ScrollView style={{ marginBottom: 20 }}>
+                            <RaidGuideSection title="INITIALIZING A RAID (EXERCISE)" icon="play" color={colors.primary}>
+                                Select exercises (Bench, Squat, etc.) from the system database to begin your gym workout. Use the search bar to find specific equipment.
+                            </RaidGuideSection>
+                            <RaidGuideSection title="COMBAT SETS (WORKOUT LOG)" icon="flash" color={colors.warning}>
+                                Enter weight (KG) and reps for each set. This represents your practical output in the gym. The system translates physical effort into Growth XP.
+                            </RaidGuideSection>
+                            <RaidGuideSection title="DUNGEON CLEAR (SAVES SESSION)" icon="shield-checkmark" color={colors.success}>
+                                Tap "FINISH RAID" once your gym session is over. You must then manually "EXTRACT LOOT" to save your workout data permanently.
+                            </RaidGuideSection>
+                            <RaidGuideSection title="RAID RANKS" icon="medal" color={colors.accent || colors.primary}>
+                                Your performance is ranked S-E (Elite to Novice) based on intensity and effort.
+                            </RaidGuideSection>
+                        </ScrollView>
+                        <TouchableOpacity 
+                            style={[styles.collectBtn, { backgroundColor: colors.primary }]} 
+                            onPress={() => setShowGuide(false)}
+                        >
+                            <Text style={styles.collectBtnText}>I UNDERSTAND</Text>
+                        </TouchableOpacity>
+                    </FadeInView>
+                </View>
+            </Modal>
         </View>
     );
 }
 
+const RaidGuideSection = ({ title, icon, color, children }) => {
+    const { colors } = useTheme();
+    return (
+        <View style={{ marginBottom: 24 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 10 }}>
+                <Ionicons name={icon} size={16} color={color} />
+                <Text style={{ fontSize: 12, fontWeight: 'bold', letterSpacing: 1, color }}>{title}</Text>
+            </View>
+            <Text style={{ fontSize: 12, lineHeight: 18, color: colors.textSecondary }}>{children}</Text>
+        </View>
+    );
+};
+
 const styles = StyleSheet.create({
     container: { flex: 1 },
-    header: {
-        paddingBottom: 14,
-        alignItems: 'center',
-        borderBottomWidth: 1,
-    },
-    title: { fontSize: 20, fontWeight: 'bold', letterSpacing: 3, marginBottom: 4 },
-    hint: { fontSize: 11, marginTop: 4, paddingHorizontal: 24, textAlign: 'center', letterSpacing: 1 },
+    header: { paddingBottom: 14, alignItems: 'center', borderBottomWidth: 1 },
+    sessionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', paddingHorizontal: 20 },
+    title: { fontSize: 18, fontWeight: 'bold', letterSpacing: 2 },
+    timer: { fontSize: 14, fontWeight: 'bold', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', marginTop: 2 },
+    finishBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 6 },
+    finishBtnText: { color: '#000', fontWeight: 'bold', fontSize: 12, letterSpacing: 1 },
     content: { flex: 1, padding: SIZES.padding },
-    formCard: {
-        padding: SIZES.padding,
-        borderRadius: SIZES.radiusLg || 12,
+    emptyContainer: { flex: 1, justifyContent: 'center', paddingTop: 60 },
+    startCard: { padding: 30, borderRadius: 20, borderWidth: 1, alignItems: 'center', position: 'relative', overflow: 'hidden' },
+    accentLine: { position: 'absolute', top: 0, left: 0, right: 0, height: 4 },
+    startTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 8, letterSpacing: 1 },
+    startSubtitle: { fontSize: 13, textAlign: 'center', marginBottom: 24, lineHeight: 20 },
+    startBtn: { paddingHorizontal: 32, paddingVertical: 16, borderRadius: 12, elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5 },
+    startBtnText: { color: '#000', fontWeight: 'bold', letterSpacing: 2 },
+    sessionContainer: { flex: 1 },
+    addExerciseBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderWidth: 1, borderStyle: 'dashed', borderRadius: 12, gap: 10, marginBottom: 20 },
+    addExerciseText: { fontWeight: 'bold', letterSpacing: 1, fontSize: 13 },
+    cancelBtn: { paddingVertical: 16, alignItems: 'center' },
+    cancelBtnText: { fontSize: 11, fontWeight: 'bold', letterSpacing: 1 },
+    modalOverlay: { flex: 1, justifyContent: 'flex-end' },
+    modalContent: { height: '85%', borderTopLeftRadius: 30, borderTopRightRadius: 30, borderTopWidth: 2, padding: 24 },
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+    modalTitle: { fontSize: 16, fontWeight: 'bold', letterSpacing: 2 },
+    searchInput: { height: 45, borderRadius: 10, borderWidth: 1, paddingHorizontal: 16, marginBottom: 20, fontSize: 14 },
+    exerciseItem: { paddingVertical: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1 },
+    exerciseName: { fontSize: 15, fontWeight: '500' },
+    emptySearchText: { textAlign: 'center', marginTop: 40, fontSize: 14, opacity: 0.6 },
+    clearOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.9)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 24,
+    },
+    clearContent: {
+        width: '100%',
+        maxWidth: 400,
+        borderRadius: 24,
         borderWidth: 1,
-        marginBottom: 24,
+        padding: 30,
         position: 'relative',
         overflow: 'hidden',
     },
-    glowLineTop: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        height: 3,
-    },
-    label: { fontSize: 10, fontWeight: 'bold', letterSpacing: 2, marginBottom: 8 },
-    pickerWrap: { borderWidth: 1, borderRadius: SIZES.radius, marginBottom: 10, overflow: 'hidden' },
-    picker: { width: '100%', height: Platform.OS === 'ios' ? 120 : 50 },
-    muscleLine: { fontSize: 11, letterSpacing: 1, marginBottom: 20, textAlign: 'right' },
-    row: { flexDirection: 'row', gap: 12, marginBottom: 16 },
-    inputGroup: { flex: 1 },
-    input: { 
-        borderWidth: 1, 
-        padding: 12, 
-        borderRadius: SIZES.radiusSm || 8, 
-        fontSize: 18, 
+    clearTitle: {
+        fontSize: 22,
+        fontWeight: 'bold',
+        letterSpacing: 4,
         textAlign: 'center',
+        marginBottom: 20,
+    },
+    raidRankBadge: {
+        alignSelf: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 6,
+        borderRadius: 12,
+        borderWidth: 1,
+        marginBottom: 30,
+    },
+    raidRankText: {
+        fontSize: 14,
+        fontWeight: 'bold',
+        letterSpacing: 2,
+    },
+    clearStatsGrid: {
+        gap: 20,
+        marginBottom: 30,
+    },
+    clearStatItem: {
+        alignItems: 'center',
+    },
+    clearStatLabel: {
+        fontSize: 10,
+        fontWeight: 'bold',
+        letterSpacing: 2,
+        marginBottom: 6,
+    },
+    clearStatValue: {
+        fontSize: 20,
         fontWeight: 'bold',
     },
-    inputFull: { 
-        borderWidth: 1, 
-        padding: 12, 
-        borderRadius: SIZES.radiusSm || 8, 
-        fontSize: 14, 
-        marginBottom: 16 
-    },
-    notes: { 
-        borderWidth: 1, 
-        padding: 12, 
-        borderRadius: SIZES.radiusSm || 8, 
-        fontSize: 14, 
-        minHeight: 80, 
-        textAlignVertical: 'top', 
-        marginBottom: 16 
-    },
-    slider: { width: '100%', height: 40, marginBottom: 8 },
-    volumePreview: { fontSize: 13, marginBottom: 16, letterSpacing: 0.5 },
-    submitBtn: { 
-        borderWidth: 1, 
-        padding: 16, 
-        borderRadius: SIZES.radiusSm || 8, 
-        alignItems: 'center', 
-        marginTop: 4 
-    },
-    submitBtnText: { fontSize: 13, fontWeight: 'bold', letterSpacing: 2 },
-    sectionTitle: { fontSize: 12, fontWeight: 'bold', marginBottom: 14, letterSpacing: 2 },
-    emptyText: { fontStyle: 'italic', textAlign: 'center', marginTop: 12, fontSize: 13 },
-    historyCard: {
+    lootItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        padding: SIZES.padding,
-        borderRadius: SIZES.radiusSm || 8,
+        padding: 12,
+        borderRadius: 12,
         borderWidth: 1,
-        borderLeftWidth: 4,
-        marginBottom: 10,
+        marginBottom: 12,
+        gap: 12,
     },
-    historyName: { fontWeight: 'bold', fontSize: 16, marginBottom: 4, letterSpacing: 1 },
-    historyStats: { fontSize: 12, marginBottom: 4 },
-    historyDate: { fontSize: 10, letterSpacing: 0.5 },
-    historyXpBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, borderWidth: 1, marginLeft: 8 },
-    historyXpText: { fontWeight: 'bold', fontSize: 12 },
+    lootText: {
+        fontSize: 11,
+        fontWeight: 'bold',
+        letterSpacing: 1,
+        flex: 1,
+    },
+    collectBtn: {
+        marginTop: 10,
+        paddingVertical: 16,
+        borderRadius: 12,
+        alignItems: 'center',
+    },
+    collectBtnText: {
+        color: '#000',
+        fontWeight: 'bold',
+        letterSpacing: 2,
+        fontSize: 14,
+    },
+    guideHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingBottom: 16,
+        borderBottomWidth: 1,
+        marginBottom: 16,
+    },
+    guideTitle: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        letterSpacing: 2,
+    },
 });

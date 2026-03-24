@@ -12,16 +12,14 @@ import StatCard from '../components/StatCard';
 import FadeInView from '../components/FadeInView';
 import { totalHoursTrained } from '../utils/workoutAnalytics';
 
-const QUOTES = [
-    'The system has acknowledged your presence. Keep training to unlock higher ranks.',
-    'Every rep is a step closer to the next level. Do not waste the grind.',
-    'Strength is not given. It is earned in silence, set after set.',
-    'Your stats are updating. Consistency is the ultimate skill.',
-    'Rest is part of the quest. Return sharper tomorrow.',
-    'I alone level up. The dungeon awaits.',
-    'Arise. Your shadow army grows stronger with each session.',
-    'The weak fear the dungeon. You conquer it daily.',
-];
+const getRankDesc = (rank) => {
+    if (rank === 'S-Rank') return 'SHADOW SOVEREIGN';
+    if (rank === 'A-Rank') return 'ELITE HUNTER';
+    if (rank === 'B-Rank') return 'VETERAN HUNTER';
+    if (rank === 'C-Rank') return 'ADVANCED HUNTER';
+    if (rank === 'D-Rank') return 'ROOKIE HUNTER';
+    return 'E-RANK RECRUIT';
+};
 
 export default function HomeScreen() {
     const { colors } = useTheme();
@@ -30,20 +28,42 @@ export default function HomeScreen() {
     const [profile, setProfile] = useState(null);
     const [workouts, setWorkouts] = useState([]);
     const [refreshing, setRefreshing] = useState(false);
-    const [quoteIndex, setQuoteIndex] = useState(0);
+    const [systemMessage, setSystemMessage] = useState('');
+
+    const generateSystemMessage = (profileData, workoutData) => {
+        const name = profileData?.name || 'Hunter';
+        const level = calculateLevelProgress(profileData?.totalXP || 0).level;
+        const rankName = getRank(level);
+        const streak = profileData?.streak || 0;
+        
+        if (rankName === 'S-Rank') return `Arise, Shadow Sovereign. The world is your dungeon. Current combat status: PEAK.`;
+        if (streak === 0) return `Hunter ${name}, you are becoming weak. Log a raid immediately to prevent tactical decay.`;
+        if (streak >= 7) return `The Shadows sense your determination. Your streak of ${streak} days is resonating with the System.`;
+        if (level < 5) return `Welcome to the system, Hunter. Your journey to reach the S-Rank has just begun. Initializing evaluation...`;
+        if (workoutData.some(w => w.isPR)) return `SYSTEM ALERT: Your physical limits were surpassed in the recent raid. STR stats are increasing.`;
+        
+        const randomQuotes = [
+            'Every rep is a step closer to the next level. Do not waste the grind.',
+            'Strength is not given. It is earned in silence, set after set.',
+            'Your stats are updating. Consistency is the ultimate skill.',
+            'I alone level up. The dungeon awaits.',
+            'Arise. Your shadow army grows stronger with each session.'
+        ];
+        return randomQuotes[Math.floor(Math.random() * randomQuotes.length)];
+    };
 
     const loadData = async () => {
         const data = await StorageService.loadAllData();
         if (data) {
             setProfile(data.profile);
             setWorkouts(data.workouts);
+            setSystemMessage(generateSystemMessage(data.profile, data.workouts));
         }
     };
 
     useFocusEffect(
         useCallback(() => {
             loadData();
-            setQuoteIndex(Math.floor(Math.random() * QUOTES.length));
         }, [])
     );
 
@@ -169,11 +189,42 @@ export default function HomeScreen() {
                             const q3 = (profile.streak || 0) >= 3;
                             const allDone = q1 && q2 && q3;
 
+                            const getBossName = (rank) => {
+                                if (rank === 'S-Rank') return '⟨ BOSS: THE ANT MONARCH ⟩';
+                                if (rank === 'A-Rank') return '⟨ BOSS: KAGALIZ THE OVERLORD ⟩';
+                                if (rank === 'B-Rank') return '⟨ BOSS: BLOOD-RED IGRIS ⟩';
+                                if (rank === 'C-Rank') return '⟨ BOSS: THE HOBGOBLIN KING ⟩';
+                                return '⟨ BOSS: E-RANK DUNGEON GUARDIAN ⟩';
+                            };
+
+                            const today = new Date();
+                            const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+                            const hoursLeft = Math.floor((tomorrow - today) / (1000 * 60 * 60));
+                            const minutesLeft = Math.floor(((tomorrow - today) / (1000 * 60)) % 60);
+
                             return (
                                 <>
-                                    <Text style={[styles.sectionLabel, { color: colors.primary }]}>⟨ DAILY QUESTS ⟩</Text>
-                                    <View style={[styles.questCard, { borderColor: allDone ? colors.success : colors.warning, backgroundColor: colors.backgroundSecondary }]}>
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 4, marginBottom: 4 }}>
+                                        <Text style={[styles.sectionLabel, { color: colors.primary, marginBottom: 4, letterSpacing: 2 }]}>⟨ DAILY MISSIONS ⟩</Text>
+                                        <Text style={{ fontSize: 8, color: colors.textSecondary, fontWeight: 'bold', marginBottom: 6, opacity: 0.8 }} numberOfLines={1}>{getBossName(rank)}</Text>
+                                    </View>
+                                    <View style={[styles.questCard, { 
+                                        borderColor: allDone ? colors.success : colors.warning, 
+                                        backgroundColor: colors.backgroundSecondary,
+                                        borderStyle: allDone ? 'solid' : 'dashed'
+                                    }]}>
                                         <View style={[styles.glowLineTop, { backgroundColor: allDone ? colors.success : colors.warning }]} />
+                                        
+                                        <View style={styles.questHeader}>
+                                            <Text style={[styles.questDeadline, { color: colors.textSecondary }]}>
+                                                TIME REMAINING: <Text style={{ color: colors.warning }}>{hoursLeft}H {minutesLeft}M</Text>
+                                            </Text>
+                                            {allDone && (
+                                                <View style={[styles.bonusTag, { backgroundColor: colors.transparentSuccess, borderColor: colors.success }]}>
+                                                    <Text style={{ color: colors.success, fontSize: 8, fontWeight: 'bold' }}>BONUS ACTIVE ✦</Text>
+                                                </View>
+                                            )}
+                                        </View>
                                         <QuestItem 
                                             title="THE GRIND: INITIALIZE" 
                                             desc="Log at least 1 training session today" 
@@ -194,11 +245,16 @@ export default function HomeScreen() {
                                         />
                                         
                                         <View style={[styles.questStatus, { backgroundColor: colors.background }]}>
-                                            <Text style={{ color: colors.textSecondary, fontSize: 10 }}>DAILY SYSTEM EVALUATION: </Text>
+                                            <Text style={{ color: colors.textSecondary, fontSize: 10 }}>MISSION STATUS: </Text>
                                             <Text style={{ color: allDone ? colors.success : colors.warning, fontWeight: 'bold' }}>
-                                                {allDone ? 'CLEARED' : 'IN PROGRESS'}
+                                                {allDone ? 'CLEARED' : 'PENDING EVALUATION'}
                                             </Text>
                                         </View>
+                                        {allDone && (
+                                            <Text style={{ color: colors.textSecondary, fontSize: 9, textAlign: 'center', marginTop: 8, fontStyle: 'italic' }}>
+                                                Loot claimable in Profile Stash.
+                                            </Text>
+                                        )}
                                     </View>
                                 </>
                             );
@@ -239,8 +295,11 @@ export default function HomeScreen() {
                     {/* System Message */}
                     <FadeInView delay={550}>
                         <View style={[styles.systemMessage, { borderLeftColor: colors.accent || colors.primary, backgroundColor: colors.transparentAccent || colors.transparentPrimary }]}>
-                            <Text style={[styles.systemLabel, { color: colors.accent || colors.primary }]}>⌁ SYSTEM MESSAGE</Text>
-                            <Text style={[styles.messageText, { color: colors.textSecondary }]}>"{QUOTES[quoteIndex]}"</Text>
+                            <Text style={[styles.systemLabel, { color: colors.accent || colors.primary }]}>⌁ SYSTEM EVALUATION</Text>
+                            <Text style={[styles.messageText, { color: colors.textSecondary }]}>"{systemMessage}"</Text>
+                            {rank === 'S-Rank' && (
+                                <Text style={{ fontSize: 10, color: colors.success, marginTop: 8, fontWeight: 'bold' }}>✦ SYSTEM PERK: MERCHANT PERMISSION GRANTED (STASH DISCOUNT ACTIVE)</Text>
+                            )}
                         </View>
                     </FadeInView>
 
@@ -352,6 +411,26 @@ const styles = StyleSheet.create({
         marginBottom: 24,
         position: 'relative',
         overflow: 'hidden',
+    },
+    questHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 16,
+        paddingBottom: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.05)',
+    },
+    questDeadline: {
+        fontSize: 10,
+        fontWeight: 'bold',
+        letterSpacing: 1,
+    },
+    bonusTag: {
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 4,
+        borderWidth: 1,
     },
     glowLineTop: {
         position: 'absolute',

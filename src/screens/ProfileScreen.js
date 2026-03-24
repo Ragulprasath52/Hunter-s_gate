@@ -11,6 +11,7 @@ import { SIZES } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
 import { totalHoursTrained, weekOverWeekSummary, bestLiftWithDate } from '../utils/workoutAnalytics';
 import FadeInView from '../components/FadeInView';
+import SystemActionModal from '../components/SystemActionModal';
 
 export default function ProfileScreen() {
     const { colors, isDark, setDarkMode } = useTheme();
@@ -18,10 +19,40 @@ export default function ProfileScreen() {
     const [profile, setProfile] = useState(null);
     const [workouts, setWorkouts] = useState([]);
     const [customExerciseName, setCustomExerciseName] = useState('');
+    const [customExerciseType, setCustomExerciseType] = useState('weighted');
     const [isSyncModalVisible, setIsSyncModalVisible] = useState(false);
     const [isInventoryModalVisible, setIsInventoryModalVisible] = useState(false);
     const [syncUid, setSyncUid] = useState('');
     const [isSyncing, setIsSyncing] = useState(false);
+    const [isSettingsModalVisible, setIsSettingsModalVisible] = useState(false);
+    const [isGuideModalVisible, setIsGuideModalVisible] = useState(false);
+    const [isLicenseModalVisible, setIsLicenseModalVisible] = useState(false);
+    const [isDemoModalVisible, setIsDemoModalVisible] = useState(false);
+
+    const [actionModal, setActionModal] = useState({
+        visible: false,
+        title: '',
+        message: '',
+        confirmText: 'Confirm',
+        cancelText: null,
+        onConfirm: () => {},
+        type: 'SYSTEM'
+    });
+
+    const showModal = (config) => {
+        setActionModal({
+            visible: true,
+            title: config.title || 'System Message',
+            message: config.message || '',
+            confirmText: config.confirmText || 'OK',
+            cancelText: config.cancelText || null,
+            onConfirm: () => {
+                if (config.onConfirm) config.onConfirm();
+                setActionModal(prev => ({ ...prev, visible: false }));
+            },
+            type: config.type || 'SYSTEM'
+        });
+    };
 
     const auraAnim = useRef(new Animated.Value(0)).current;
 
@@ -131,9 +162,9 @@ export default function ProfileScreen() {
             await StorageService.saveUserProfile(next);
             setProfile(next);
             setIsEditModalVisible(false);
-            Alert.alert('SYSTEM UPDATED', `Welcome, Hunter ${tempName.trim()}.`);
+            showModal({ title: 'SYSTEM UPDATED', message: `Welcome, Hunter ${tempName.trim()}.`, type: 'SUCCESS' });
         } else {
-            Alert.alert('System Error', 'Hunter name cannot be empty.');
+            showModal({ title: 'System Error', message: 'Hunter name cannot be empty.', type: 'DANGER' });
         }
     };
 
@@ -142,7 +173,7 @@ export default function ProfileScreen() {
             const data = await StorageService.exportData();
             await Share.share({ message: data, title: 'Hunter Stats Backup' });
         } catch {
-            Alert.alert('ERROR', 'E-Rank performance: Export failed.');
+            showModal({ title: 'ERROR', message: 'E-Rank performance: Export failed.', type: 'DANGER' });
         }
     };
 
@@ -160,13 +191,13 @@ export default function ProfileScreen() {
                 setWorkouts(result.workouts);
                 setIsSyncModalVisible(false);
                 setSyncUid('');
-                Alert.alert('SYNC SUCCESS', 'Equipment and stats have been synchronized from the cloud.');
+                showModal({ title: 'SYNC SUCCESS', message: 'Equipment and stats synchronized from the cloud.', type: 'SUCCESS' });
             } else {
-                Alert.alert('Sync Failed', 'Could not find data for this Hunter ID.');
+                showModal({ title: 'Sync Failed', message: 'Could not find data for this Hunter ID.', type: 'DANGER' });
             }
         } catch (error) {
             console.error(error);
-            Alert.alert('Sync Error', 'An error occurred during synchronization.');
+            showModal({ title: 'Sync Error', message: 'An error occurred during synchronization.', type: 'DANGER' });
         } finally {
             setIsSyncing(false);
         }
@@ -177,9 +208,9 @@ export default function ProfileScreen() {
         setIsSyncing(true);
         try {
             await StorageService.saveUserProfile(profile);
-            Alert.alert('SYNC COMPLETE', 'Your local battle data has been sent to the cloud.');
+            showModal({ title: 'SYNC COMPLETE', message: 'Your local battle data has been sent to the cloud.', type: 'SUCCESS' });
         } catch {
-            Alert.alert('Sync Error', 'Failed to reach the cloud server.');
+            showModal({ title: 'Sync Error', message: 'Failed to reach the cloud server.', type: 'DANGER' });
         } finally {
             setIsSyncing(false);
         }
@@ -188,7 +219,7 @@ export default function ProfileScreen() {
     const copyUid = async () => {
         if (!profile?.uid) return;
         await Clipboard.setStringAsync(profile.uid);
-        Alert.alert('SYSTEM SYNC', 'Hunter ID copied to clipboard. Keep this safe for account recovery.');
+        showModal({ title: 'SYSTEM SYNC', message: 'Hunter ID copied to clipboard. Keep this safe for account recovery.', type: 'SYSTEM' });
     };
 
     const handleShareUid = () => {
@@ -203,36 +234,43 @@ export default function ProfileScreen() {
         if (!name) return;
         
         const currentCustoms = profile.customExercises || [];
-        if (currentCustoms.includes(name)) {
-            Alert.alert('System Error', 'Exercise already exists in the system.');
+        const exists = currentCustoms.some(ex => 
+            (typeof ex === 'string' ? ex : ex.name).toLowerCase() === name.toLowerCase()
+        );
+
+        if (exists) {
+            showModal({ title: 'System Error', message: 'Exercise already exists in the system.', type: 'DANGER' });
             return;
         }
 
+        const newExercise = { name, type: customExerciseType };
+
         const nextProfile = {
             ...profile,
-            customExercises: [...currentCustoms, name],
+            customExercises: [...currentCustoms, newExercise],
         };
 
         await StorageService.saveUserProfile(nextProfile);
         setProfile(nextProfile);
         setCustomExerciseName('');
-        Alert.alert('Exercise Registered', `"${name}" added to the Hunter log.`);
+        setCustomExerciseType('weighted');
+        showModal({ title: 'Exercise Registered', message: `"${name}" (${customExerciseType}) added to the Hunter log.`, type: 'SUCCESS' });
     };
 
     const handleClearData = () => {
-        Alert.alert('SYSTEM RESET', 'This wipes workouts, XP, achievements, and settings on this device.', [
-            { text: 'Cancel', style: 'cancel' },
-            {
-                text: 'RESET',
-                style: 'destructive',
-                onPress: async () => {
-                    await StorageService.clearAllData();
-                    await setDarkMode(true);
-                    Alert.alert('Reset complete', 'The system has been cleared.');
-                    loadData();
-                },
-            },
-        ]);
+        showModal({
+            title: 'SYSTEM RESET',
+            message: 'This wipes workouts, XP, achievements, and settings on this device. PROCEED?',
+            confirmText: 'RESET',
+            cancelText: 'CANCEL',
+            type: 'DANGER',
+            onConfirm: async () => {
+                await StorageService.clearAllData();
+                await setDarkMode(true);
+                showModal({ title: 'Reset complete', message: 'The system has been cleared.', type: 'SUCCESS' });
+                loadData();
+            }
+        });
     };
 
     if (!profile || !levelInfo) {
@@ -269,7 +307,20 @@ export default function ProfileScreen() {
         <View style={[styles.container, { backgroundColor: colors.background }]}>
             <FadeInView duration={400} style={{ flex: 1 }}>
                 <View style={[styles.header, { paddingTop: insets.top + 16, backgroundColor: colors.backgroundSecondary, borderBottomColor: colors.border }]}>
-                    <Text style={[styles.title, { color: colors.primary }]}>⟨ HUNTER PROFILE ⟩</Text>
+                    <View style={styles.headerContent}>
+                        <TouchableOpacity style={styles.helpBtn} onPress={() => setIsGuideModalVisible(true)}>
+                            <Ionicons name="help-circle-outline" size={24} color={colors.primary} />
+                        </TouchableOpacity>
+                        <Text style={[styles.title, { color: colors.primary }]}>⟨ HUNTER PROFILE ⟩</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                            <TouchableOpacity onPress={() => setIsLicenseModalVisible(true)} style={{ padding: 2 }}>
+                                <Ionicons name="card-outline" size={26} color={colors.primary} />
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => setIsSettingsModalVisible(true)} style={{ padding: 2 }}>
+                                <Ionicons name="settings-outline" size={26} color={colors.primary} />
+                            </TouchableOpacity>
+                        </View>
+                    </View>
                 </View>
 
             <ScrollView style={styles.content}>
@@ -352,6 +403,26 @@ export default function ProfileScreen() {
                     </Text>
                 </FadeInView>
 
+                <FadeInView delay={250} style={{ paddingHorizontal: SIZES.padding, marginBottom: 16 }}>
+                    <TouchableOpacity 
+                        style={[
+                            styles.syncBtn, 
+                            { 
+                                borderColor: colors.accent || colors.primary, 
+                                backgroundColor: 'rgba(0, 212, 255, 0.08)',
+                                height: 50,
+                                borderRadius: 12,
+                                borderStyle: 'dashed'
+                            }
+                        ]} 
+                        onPress={() => setIsInventoryModalVisible(true)}
+                    >
+                        <Text style={[styles.syncBtnText, { color: colors.accent || colors.primary, fontSize: 13, letterSpacing: 2 }]}>
+                            ⟨ OPEN HUNTER'S STASH ⟩ ⚔
+                        </Text>
+                    </TouchableOpacity>
+                </FadeInView>
+
                 <FadeInView delay={300} style={[styles.infoSection, { backgroundColor: colors.backgroundSecondary, borderColor: colors.primary }]}>
                     <View style={[styles.glowLineTop, { backgroundColor: colors.accent || colors.primary }]} />
                     <Text style={[styles.infoTitle, { color: colors.accent || colors.primary, marginBottom: 16 }]}>SYSTEM STATS (EVALUATION)</Text>
@@ -363,6 +434,13 @@ export default function ProfileScreen() {
                         <StatItem label="INT" value={Math.min(99, Math.floor(avgIntensity * 8))} fullLabel="INTELLIGENCE" color={colors.warning} />
                     </View>
                     <Text style={[styles.hint, { color: colors.textSecondary, textAlign: 'center', marginTop: 12 }]}>Stats are automatically adjusted based on current battle data.</Text>
+                    <TouchableOpacity 
+                        style={[styles.demoBtn, { borderColor: colors.warning, borderStyle: 'dashed', marginTop: 16 }]}
+                        onPress={() => setIsDemoModalVisible(true)}
+                    >
+                        <Ionicons name="eye-outline" size={18} color={colors.warning} />
+                        <Text style={[styles.demoBtnText, { color: colors.warning }]}>PREVIEW FUTURE EVOLUTION (S-RANK)</Text>
+                    </TouchableOpacity>
                 </FadeInView>
 
                 <FadeInView delay={400} style={[styles.infoSection, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
@@ -390,10 +468,34 @@ export default function ProfileScreen() {
 
                 <FadeInView delay={500} style={[styles.infoSection, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
                     <Text style={[styles.infoTitle, { color: colors.primary }]}>CUSTOM EXERCISES</Text>
+                    
+                    <View style={styles.typeSelectorHeader}>
+                        <TouchableOpacity 
+                            style={[
+                                styles.typeChip, 
+                                { borderColor: colors.border },
+                                customExerciseType === 'weighted' && { borderColor: colors.primary, backgroundColor: colors.transparentPrimary }
+                            ]} 
+                            onPress={() => setCustomExerciseType('weighted')}
+                        >
+                            <Text style={[styles.typeText, { color: colors.textSecondary }, customExerciseType === 'weighted' && { color: colors.primary }]}>WEIGHTED</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity 
+                            style={[
+                                styles.typeChip, 
+                                { borderColor: colors.border },
+                                customExerciseType === 'bodyweight' && { borderColor: colors.success, backgroundColor: colors.transparentSuccess }
+                            ]} 
+                            onPress={() => setCustomExerciseType('bodyweight')}
+                        >
+                            <Text style={[styles.typeText, { color: colors.textSecondary }, customExerciseType === 'bodyweight' && { color: colors.success }]}>BODYWEIGHT</Text>
+                        </TouchableOpacity>
+                    </View>
+
                     <View style={styles.addExerciseRow}>
                         <TextInput
                             style={[styles.exerciseInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]}
-                            placeholder="e.g. Incline Dumbbell Press"
+                            placeholder="e.g. Incline Bench"
                             placeholderTextColor={colors.textSecondary}
                             value={customExerciseName}
                             onChangeText={setCustomExerciseName}
@@ -406,103 +508,99 @@ export default function ProfileScreen() {
                     <Text style={[styles.hint, { color: colors.textSecondary }]}>These will appear along with default exercises in the Log Raid screen.</Text>
                 </FadeInView>
 
-                <FadeInView delay={600} style={[styles.infoSection, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
-                    <Text style={[styles.infoTitle, { color: colors.primary }]}>APPEARANCE</Text>
-                    
-                    <View style={[styles.rowBetween, { marginBottom: 16 }]}>
-                        <Text style={{ color: colors.textPrimary, fontSize: 15 }}>Dark mode</Text>
-                        <Switch
-                            value={isDark}
-                            onValueChange={(v) => setDarkMode(v)}
-                            trackColor={{ false: colors.border, true: colors.transparentPrimaryMedium }}
-                            thumbColor={isDark ? colors.primary : colors.textSecondary}
-                        />
-                    </View>
+                    <View style={{ height: 100 }} />
+                </ScrollView>
+            </FadeInView>
 
+            {/* System Settings Modal */}
+            <Modal
+                visible={isSettingsModalVisible}
+                transparent={true}
+                animationType="slide"
+                onRequestClose={() => setIsSettingsModalVisible(false)}
+            >
+                <TouchableOpacity 
+                    activeOpacity={1} 
+                    style={styles.modalOverlay} 
+                    onPress={() => setIsSettingsModalVisible(false)}
+                >
                     <TouchableOpacity 
-                        style={[styles.syncBtn, { borderColor: colors.accent || colors.primary, backgroundColor: 'rgba(0, 212, 255, 0.05)' }]} 
-                        onPress={() => setIsInventoryModalVisible(true)}
+                        activeOpacity={1} 
+                        style={[styles.modalContent, { backgroundColor: colors.backgroundSecondary, borderColor: colors.primary, height: '75%' }]}
+                        onPress={() => {}}
                     >
-                        <Text style={[styles.syncBtnText, { color: colors.accent || colors.primary }]}>
-                            OPEN HUNTER'S STASH (LOOT) ⚔
-                        </Text>
-                    </TouchableOpacity>
-                    
-                    <Text style={[styles.hint, { color: colors.textSecondary }]}>Customize your profile with unlocked auras and titles.</Text>
-                </FadeInView>
-
-                <FadeInView delay={700}>
-                    <View style={[styles.about, { borderColor: colors.border, backgroundColor: colors.backgroundSecondary, marginBottom: 20 }]}>
-                        <Text style={[styles.aboutTitle, { color: colors.primary }]}>ABOUT</Text>
-                        <Text style={[styles.aboutBody, { color: colors.textSecondary }]}>
-                            Hunter Gate: Gym log tracker is a local-first training log with XP, ranks, and quests. Data synchronized via Hunter ID.
-                        </Text>
-                        <Text style={[styles.aboutVer, { color: colors.textSecondary }]}>Version 1.1.0</Text>
-                    </View>
-
-                    {/* Hunter Sync Section */}
-                    <View style={[styles.infoSection, { borderColor: colors.primary, backgroundColor: colors.backgroundSecondary }]}>
                         <View style={[styles.glowLineTop, { backgroundColor: colors.primary }]} />
-                        <Text style={[styles.infoTitle, { color: colors.primary }]}>⟨ HUNTER SYNC ⟩</Text>
-                        
-                        <View style={styles.uidContainer}>
-                            <Text style={[styles.uidLabel, { color: colors.textSecondary }]}>YOUR HUNTER ID:</Text>
-                            <TouchableOpacity onPress={copyUid} style={styles.uidRow}>
-                                <Text style={[styles.uidText, { color: colors.textPrimary }]} numberOfLines={1}>
-                                    {profile?.uid || 'INITIALIZING...'}
-                                </Text>
-                                <Ionicons name="copy-outline" size={16} color={colors.primary} style={{ marginLeft: 8 }} />
+                        <View style={styles.modalHeader}>
+                            <Text style={[styles.modalTitle, { color: colors.primary }]}>⟨ SYSTEM SETTINGS ⟩</Text>
+                            <TouchableOpacity onPress={() => setIsSettingsModalVisible(false)}>
+                                <Ionicons name="close" size={24} color={colors.textPrimary} />
                             </TouchableOpacity>
                         </View>
 
-                        <Text style={[styles.hint, { color: colors.textSecondary, marginBottom: 16 }]}>
-                            Use this ID to sync your progress to another device or backup your data.
-                        </Text>
+                        <ScrollView showsVerticalScrollIndicator={false}>
+                            <Text style={[styles.settingSectionTitle, { color: colors.primary }]}>APPEARANCE</Text>
+                            <View style={[styles.settingRow, { borderColor: colors.border }]}>
+                                <View>
+                                    <Text style={[styles.settingLabel, { color: colors.textPrimary }]}>DARK MODE</Text>
+                                    <Text style={[styles.settingSub, { color: colors.textSecondary }]}>Optimize terminal for night raids.</Text>
+                                </View>
+                                <Switch
+                                    value={isDark}
+                                    onValueChange={(v) => setDarkMode(v)}
+                                    trackColor={{ false: colors.border, true: colors.transparentPrimaryMedium }}
+                                    thumbColor={isDark ? colors.primary : colors.textSecondary}
+                                />
+                            </View>
 
-                        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+                            <Text style={[styles.settingSectionTitle, { color: colors.primary, marginTop: 24 }]}>CLOUD SYNCHRONIZATION</Text>
+                            <View style={[styles.settingCard, { borderColor: colors.border, backgroundColor: colors.background }]}>
+                                <Text style={[styles.uidLabel, { color: colors.textSecondary }]}>HUNTER ID: {profile?.uid || 'INITIALIZING...'}</Text>
+                                <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+                                    <TouchableOpacity style={[styles.syncBtnSmall, { borderColor: colors.primary }]} onPress={() => { setIsSettingsModalVisible(false); setIsSyncModalVisible(true); }}>
+                                        <Text style={[styles.syncBtnText, { color: colors.primary }]}>CONNECT</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity style={[styles.syncBtnSmall, { borderColor: colors.success, backgroundColor: colors.transparentSuccess }]} onPress={handleManualSync}>
+                                        <Text style={[styles.syncBtnText, { color: colors.success }]}>PUSH ✦</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity style={[styles.syncBtnSmall, { borderColor: colors.warning }]} onPress={copyUid}>
+                                        <Text style={[styles.syncBtnText, { color: colors.warning }]}>COPY</Text>
+                                    </TouchableOpacity>
+                                </View>
+                                <TouchableOpacity 
+                                    style={[styles.syncBtn, { borderColor: colors.warning, backgroundColor: 'rgba(255, 170, 0, 0.05)', marginTop: 12 }]} 
+                                    onPress={handleShareUid}
+                                >
+                                    <Text style={[styles.syncBtnText, { color: colors.warning }]}>BACKUP RECOVERY KEY ⚷</Text>
+                                </TouchableOpacity>
+                            </View>
+
+                            <Text style={[styles.settingSectionTitle, { color: colors.danger, marginTop: 24 }]}>DANGER ZONE (SYSTEM RESET)</Text>
                             <TouchableOpacity 
-                                style={[styles.syncBtn, { borderColor: colors.primary, flex: 1 }]} 
-                                onPress={() => setIsSyncModalVisible(true)}
+                                style={[styles.resetBtn, { borderColor: colors.danger, backgroundColor: 'rgba(255, 68, 68, 0.05)' }]} 
+                                onPress={() => {
+                                    setIsSettingsModalVisible(false);
+                                    handleClearData();
+                                }}
                             >
-                                <Text style={[styles.syncBtnText, { color: colors.primary }]}>CONNECT SYSTEM</Text>
+                                <Text style={[styles.resetBtnText, { color: colors.danger }]}>INITIATE SYSTEM RESET ☠</Text>
                             </TouchableOpacity>
-                            <TouchableOpacity 
-                                style={[styles.syncBtn, { borderColor: colors.success, flex: 1, backgroundColor: colors.transparentSuccess }]} 
-                                onPress={handleManualSync}
-                                disabled={isSyncing}
-                            >
-                                <Text style={[styles.syncBtnText, { color: colors.success }]}>
-                                    {isSyncing ? 'SYNCING...' : 'SYNC NOW ✦'}
+                            <Text style={[styles.settingSub, { color: colors.textSecondary, textAlign: 'center', marginTop: 8 }]}>
+                                Resets all local battle data, XP, and custom exercises. Proceed with caution.
+                            </Text>
+
+                            <View style={{ height: 40 }} />
+                            <View style={[styles.about, { borderColor: colors.border, backgroundColor: 'rgba(255,255,255,0.02)' }]}>
+                                <Text style={[styles.aboutTitle, { color: colors.primary }]}>ABOUT SYSTEM</Text>
+                                <Text style={[styles.aboutBody, { color: colors.textSecondary }]}>
+                                    Hunter Gate is a local-first training log with RPG-inspired progression. Data is stored locally and syncable via Hunter ID.
                                 </Text>
-                            </TouchableOpacity>
-                        </View>
-
-                        <TouchableOpacity 
-                            style={[styles.syncBtn, { borderColor: colors.warning, backgroundColor: 'rgba(255, 170, 0, 0.1)' }]} 
-                            onPress={handleShareUid}
-                        >
-                            <Text style={[styles.syncBtnText, { color: colors.warning }]}>BACKUP HUNTER ID (RECOVERY KEY) ⚷</Text>
-                        </TouchableOpacity>
-                    </View>
-
-                    <TouchableOpacity 
-                        style={[styles.exportBtn, { borderColor: colors.border, backgroundColor: colors.backgroundSecondary }]} 
-                        onPress={handleExport}
-                    >
-                        <Text style={[styles.exportText, { color: colors.textSecondary }]}>EXPORT RAW DATA ⤓</Text>
+                                <Text style={[styles.aboutVer, { color: colors.textSecondary }]}>VERSION 1.1.0 · BUILD_ID_774</Text>
+                            </View>
+                            <View style={{ height: 40 }} />
+                        </ScrollView>
                     </TouchableOpacity>
-
-                    <TouchableOpacity 
-                        style={styles.dangerBtn} 
-                        onPress={handleClearData}
-                    >
-                        <Text style={styles.dangerBtnText}>WIPE SYSTEM DATA ☠</Text>
-                    </TouchableOpacity>
-
-                    <View style={{ height: 60 }} />
-                </FadeInView>
-            </ScrollView>
-        </FadeInView>
+                </TouchableOpacity>
+            </Modal>
 
         {/* Sync Modal */}
         <Modal
@@ -616,16 +714,18 @@ export default function ProfileScreen() {
                 style={styles.modalOverlay} 
                 onPress={() => setIsInventoryModalVisible(false)}
             >
-                <TouchableOpacity 
-                    activeOpacity={1} 
-                    style={[styles.modalContent, { backgroundColor: colors.backgroundSecondary, borderColor: colors.accent || colors.primary, maxHeight: '80%' }]}
-                    onPress={() => {}}
+                <View 
+                    style={[styles.modalContent, { backgroundColor: colors.backgroundSecondary, borderColor: colors.accent || colors.primary, maxHeight: '85%' }]}
                 >
                     <View style={[styles.glowLineTop, { backgroundColor: colors.accent || colors.primary }]} />
                     <Text style={[styles.modalTitle, { color: colors.accent || colors.primary }]}>⟨ HUNTER'S STASH ⟩</Text>
                     <Text style={[styles.modalHint, { color: colors.textSecondary }]}>Collect loot by completing system objectives and unlocking achievements.</Text>
                     
-                    <ScrollView style={{ marginVertical: 20 }}>
+                    <ScrollView 
+                        style={{ marginVertical: 10 }}
+                        showsVerticalScrollIndicator={true}
+                        contentContainerStyle={{ paddingBottom: 20 }}
+                    >
                         {INVENTORY_ITEMS.map((item) => {
                             const inventory = profile?.inventory || [];
                             const equipped = profile?.equipped || {};
@@ -642,7 +742,7 @@ export default function ProfileScreen() {
                                         { 
                                             borderColor: isEquipped ? (colors.accent || colors.primary) : colors.border,
                                             opacity: isUnlocked ? 1 : 0.5,
-                                            backgroundColor: isEquipped ? 'rgba(0, 212, 255, 0.05)' : colors.background
+                                            backgroundColor: isEquipped ? 'rgba(0, 212, 255, 0.1)' : colors.background
                                         }
                                     ]}
                                 >
@@ -690,10 +790,222 @@ export default function ProfileScreen() {
                     >
                         <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 13, letterSpacing: 1 }}>CLOSE STASH</Text>
                     </TouchableOpacity>
-                </TouchableOpacity>
+                </View>
             </TouchableOpacity>
         </Modal>
+
+        {/* Monarch's License Modal */}
+        <Modal visible={isLicenseModalVisible} transparent animationType="fade" onRequestClose={() => setIsLicenseModalVisible(false)}>
+            <TouchableOpacity activeOpacity={1} style={styles.modalOverlay} onPress={() => setIsLicenseModalVisible(false)}>
+                <FadeInView style={[styles.licenseCard, { backgroundColor: colors.backgroundSecondary, borderColor: colors.primary }]}>
+                    <View style={[styles.licenseHeader, { backgroundColor: colors.primary }]}>
+                        <Text style={styles.licenseHeaderText}>HUNTER ASSOCIATION OFFICIAL LICENSE</Text>
+                    </View>
+                    <View style={styles.licenseBody}>
+                        <View style={{ flexDirection: 'row', gap: 20, marginBottom: 20 }}>
+                            <View style={[styles.licenseAvatar, { borderColor: colors.primary, backgroundColor: colors.background }]}>
+                                <Text style={[styles.licenseAvatarText, { color: colors.primary }]}>
+                                    {(profile.name || 'H').charAt(0).toUpperCase()}
+                                </Text>
+                            </View>
+                            <View style={{ flex: 1, justifyContent: 'center' }}>
+                                <Text style={[styles.licenseLabel, { color: colors.textSecondary }]}>NAME</Text>
+                                <Text style={[styles.licenseValue, { color: colors.textPrimary, fontSize: 20 }]}>{profile.name}</Text>
+                                <Text style={[styles.licenseLabel, { color: colors.textSecondary, marginTop: 10 }]}>RANK</Text>
+                                <Text style={[styles.licenseValue, { color: colors.success, fontSize: 24, fontWeight: 'bold' }]}>{rank}-RANK</Text>
+                            </View>
+                        </View>
+                        
+                        <View style={styles.licenseStatsGrid}>
+                            <View>
+                                <Text style={[styles.licenseLabel, { color: colors.textSecondary }]}>LEVEL</Text>
+                                <Text style={[styles.licenseValue, { color: colors.primary }]}>{levelInfo.level}</Text>
+                            </View>
+                            <View>
+                                <Text style={[styles.licenseLabel, { color: colors.textSecondary }]}>TOTAL XP</Text>
+                                <Text style={[styles.licenseValue, { color: colors.primary }]}>{Math.floor(profile.totalXP)}</Text>
+                            </View>
+                            <View>
+                                <Text style={[styles.licenseLabel, { color: colors.textSecondary }]}>ID</Text>
+                                <Text style={[styles.licenseValue, { color: colors.textSecondary, fontSize: 10 }]}>{profile.uid?.slice(0, 12)}...</Text>
+                            </View>
+                        </View>
+
+                        <View style={styles.licenseFooter}>
+                            <Ionicons name="shield-checkmark" size={40} color={colors.primary + '40'} />
+                            <View style={{ alignItems: 'flex-end' }}>
+                                <Text style={{ color: colors.textSecondary, fontSize: 8 }}>ISSUED BY SYSTEM</Text>
+                                <Text style={{ color: colors.textSecondary, fontSize: 6 }}>GATE COORDINATE: 37.5665° N, 126.9780° E</Text>
+                            </View>
+                        </View>
+                    </View>
+                    <TouchableOpacity 
+                        style={[styles.shareBtn, { backgroundColor: colors.primary }]} 
+                        onPress={() => Share.share({ message: `Hunter ${profile.name} | Rank: ${rank} | Level: ${levelInfo.level}\nDownload Hunter Gate and begin your awakening! ⚔️` })}
+                    >
+                        <Ionicons name="share-outline" size={20} color="#000" />
+                        <Text style={styles.shareBtnText}>SHARE LICENSE</Text>
+                    </TouchableOpacity>
+                </FadeInView>
+            </TouchableOpacity>
+        </Modal>
+
+        {/* Future Evolution (S-Rank) Demo Modal */}
+        <Modal visible={isDemoModalVisible} transparent animationType="slide" onRequestClose={() => setIsDemoModalVisible(false)}>
+            <TouchableOpacity activeOpacity={1} style={styles.modalOverlay} onPress={() => setIsDemoModalVisible(false)}>
+                <View style={[styles.demoCard, { backgroundColor: '#0a0a0c', borderColor: '#FFD700' }]}>
+                    <View style={[styles.glowLineTop, { backgroundColor: '#FFD700' }]} />
+                    <View style={[styles.demoHeader, { borderBottomColor: '#222' }]}>
+                        <Text style={{ color: '#FFD700', fontWeight: 'bold', letterSpacing: 2 }}>FUTURE EVOLUTION DETECTED</Text>
+                        <TouchableOpacity onPress={() => setIsDemoModalVisible(false)}>
+                            <Ionicons name="close" size={24} color="#fff" />
+                        </TouchableOpacity>
+                    </View>
+                    
+                    <ScrollView style={{ padding: 20 }}>
+                        <View style={{ alignItems: 'center', marginBottom: 24 }}>
+                            <View style={[styles.demoRankCircle, { borderColor: '#FFD700' }]}>
+                                <Text style={{ color: '#FFD700', fontSize: 60, fontWeight: 'bold' }}>S</Text>
+                            </View>
+                            <Text style={{ color: '#fff', fontSize: 24, fontWeight: 'bold', marginTop: 12 }}>SHADOW MONARCH</Text>
+                            <Text style={{ color: '#FFD700', fontSize: 12, letterSpacing: 3 }}>LEVEL 50 [MAX STATUS]</Text>
+                        </View>
+
+                        <View style={[styles.demoStatCard, { backgroundColor: '#151518' }]}>
+                            <Text style={{ color: '#FFD700', fontSize: 10, fontWeight: 'bold', marginBottom: 12 }}>COMMANDER-CLASS STATS</Text>
+                            <View style={styles.demoStatGrid}>
+                                <View style={{ alignItems: 'center' }}>
+                                    <Text style={{ color: '#777', fontSize: 10 }}>STR</Text>
+                                    <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>99</Text>
+                                </View>
+                                <View style={{ alignItems: 'center' }}>
+                                    <Text style={{ color: '#777', fontSize: 10 }}>VIT</Text>
+                                    <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>99</Text>
+                                </View>
+                                <View style={{ alignItems: 'center' }}>
+                                    <Text style={{ color: '#777', fontSize: 10 }}>AGI</Text>
+                                    <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>99</Text>
+                                </View>
+                                <View style={{ alignItems: 'center' }}>
+                                    <Text style={{ color: '#777', fontSize: 10 }}>INT</Text>
+                                    <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>99</Text>
+                                </View>
+                            </View>
+                        </View>
+
+                        <View style={{ marginTop: 24, gap: 12 }}>
+                            <View style={styles.demoPerk}>
+                                <Ionicons name="flash" size={16} color="#FFD700" />
+                                <Text style={{ color: '#aaa', fontSize: 12 }}>Absolute Authority: No XP limits for raids.</Text>
+                            </View>
+                            <View style={styles.demoPerk}>
+                                <Ionicons name="people" size={16} color="#FFD700" />
+                                <Text style={{ color: '#aaa', fontSize: 12 }}>Shadow Extraction: +10% efficiency on all extracts.</Text>
+                            </View>
+                        </View>
+                    </ScrollView>
+
+                    <TouchableOpacity 
+                        style={[styles.demoCloseBtn, { backgroundColor: '#FFD700' }]} 
+                        onPress={() => setIsDemoModalVisible(false)}
+                    >
+                        <Text style={{ color: '#000', fontWeight: 'bold', letterSpacing: 2 }}>KEEP TRAINING TO AWAKEN</Text>
+                    </TouchableOpacity>
+                </View>
+            </TouchableOpacity>
+        </Modal>
+
+        {/* Guide Modal */}
+        <Modal
+            visible={isGuideModalVisible}
+            transparent={true}
+            animationType="slide"
+            onRequestClose={() => setIsGuideModalVisible(false)}
+        >
+            <TouchableOpacity 
+                activeOpacity={1} 
+                style={styles.modalOverlay} 
+                onPress={() => setIsGuideModalVisible(false)}
+            >
+                <View 
+                    style={[styles.modalContent, { backgroundColor: colors.backgroundSecondary, borderColor: colors.primary, maxHeight: '85%' }]}
+                >
+                    <View style={[styles.glowLineTop, { backgroundColor: colors.primary }]} />
+                    <Text style={[styles.modalTitle, { color: colors.primary }]}>⟨ SYSTEM GUIDE ⟩</Text>
+                    <Text style={[styles.modalHint, { color: colors.textSecondary }]}>Welcome to the Hunter Gate System. Follow these protocols to evolve.</Text>
+                    
+                    <ScrollView 
+                        style={{ marginVertical: 10 }}
+                        showsVerticalScrollIndicator={true}
+                        contentContainerStyle={{ paddingBottom: 20 }}
+                    >
+                        <GuideSection 
+                            icon="flash" 
+                            title="RAIDS (WORKOUTS)" 
+                            desc="Log your training 'Raids' daily to earn XP. The more volume and intensity you provide, the faster you level up."
+                            colors={colors}
+                        />
+                        <GuideSection 
+                            icon="trending-up" 
+                            title="LEVELING & RANKING" 
+                            desc="Collect XP to increase your Level. Your 'Rank' (E-Rank to S-Rank) is determined solely by your Level milestone."
+                            colors={colors}
+                        />
+                        <GuideSection 
+                            icon="flame" 
+                            title="STREAK MULTIPLIER" 
+                            desc="Consistency is your greatest weapon. Maintaining a workout streak provides a significant XP multiplier for every raid."
+                            colors={colors}
+                        />
+                        <GuideSection 
+                            icon="trophy" 
+                            title="HUNTER'S STASH" 
+                            desc="Unlock unique Titles, Auras, and Borders by completing hidden achievements and hitting combat PRs."
+                            colors={colors}
+                        />
+                        <GuideSection 
+                            icon="people" 
+                            title="GLOBAL RANKING" 
+                            desc="Compare your combat level against hunters globally. The Top 10 earn elite status in the terminal."
+                            colors={colors}
+                        />
+                    </ScrollView>
+
+                    <TouchableOpacity 
+                        style={[styles.modalBtn, { backgroundColor: colors.primary, borderColor: colors.primary, flex: 0, alignSelf: 'center', minWidth: 200 }]} 
+                        onPress={() => setIsGuideModalVisible(false)}
+                    >
+                        <Text style={{ color: '#000', fontWeight: 'bold' }}>I UNDERSTAND</Text>
+                    </TouchableOpacity>
+                </View>
+            </TouchableOpacity>
+        </Modal>
+
+        <SystemActionModal 
+            visible={actionModal.visible}
+            title={actionModal.title}
+            message={actionModal.message}
+            confirmText={actionModal.confirmText}
+            cancelText={actionModal.cancelText}
+            onConfirm={actionModal.onConfirm}
+            onCancel={() => setActionModal(prev => ({ ...prev, visible: false }))}
+            type={actionModal.type}
+        />
     </View>
+    );
+}
+
+function GuideSection({ icon, title, desc, colors }) {
+    return (
+        <View style={[styles.guideSection, { borderColor: colors.border }]}>
+            <View style={[styles.guideIcon, { backgroundColor: colors.transparentPrimary }]}>
+                <Ionicons name={icon} size={20} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+                <Text style={[styles.guideTitle, { color: colors.primary }]}>{title}</Text>
+                <Text style={[styles.guideDesc, { color: colors.textSecondary }]}>{desc}</Text>
+            </View>
+        </View>
     );
 }
 
@@ -720,13 +1032,54 @@ function StatItem({ label, value, fullLabel, color }) {
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
-    header: {
-        paddingBottom: 16,
+    headerContent: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
         alignItems: 'center',
-        borderBottomWidth: 1,
+        width: '100%',
+        paddingHorizontal: 20,
     },
-    title: { fontSize: 20, fontWeight: 'bold', letterSpacing: 3 },
+    settingsBtn: {
+        width: 40,
+        height: 40,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    title: { fontSize: 18, fontWeight: 'bold', letterSpacing: 2 },
     content: { flex: 1, padding: SIZES.padding },
+    settingSectionTitle: { fontSize: 11, fontWeight: 'bold', letterSpacing: 1.5, marginBottom: 12 },
+    settingRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: 12,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+    },
+    settingLabel: { fontSize: 14, fontWeight: 'bold' },
+    settingSub: { fontSize: 11, marginTop: 2 },
+    settingCard: {
+        padding: 16,
+        borderRadius: 12,
+        borderWidth: 1,
+    },
+    syncBtnSmall: {
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 8,
+        borderWidth: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        flex: 1,
+    },
+    resetBtn: {
+        marginTop: 8,
+        padding: 18,
+        borderRadius: 12,
+        borderWidth: 1.5,
+        alignItems: 'center',
+        borderStyle: 'dashed',
+    },
+    resetBtnText: { fontWeight: 'bold', letterSpacing: 1, fontSize: 13 },
     profileCard: {
         alignItems: 'center',
         padding: 30,
@@ -798,6 +1151,20 @@ const styles = StyleSheet.create({
     },
     infoLabel: { fontSize: 14 },
     infoValue: { fontSize: 14, fontWeight: 'bold' },
+    typeSelectorHeader: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+    typeChip: { 
+        paddingHorizontal: 16, 
+        paddingVertical: 8, 
+        borderRadius: 20, 
+        borderWidth: 1,
+        flex: 1,
+        alignItems: 'center'
+    },
+    typeText: { fontSize: 10, fontWeight: 'bold', letterSpacing: 1 },
+    addExerciseRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
+    exerciseInput: { flex: 1, height: 45, borderRadius: 10, borderWidth: 1, paddingHorizontal: 16, fontSize: 14 },
+    addBtn: { paddingHorizontal: 20, borderRadius: 10, borderWidth: 1, justifyContent: 'center' },
+    addBtnText: { fontWeight: 'bold', fontSize: 12 },
     rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
     hint: { fontSize: 11, marginTop: 8 },
     actionBtn: { borderWidth: 1, padding: 16, borderRadius: SIZES.radiusSm || 12, alignItems: 'center', marginBottom: 16 },
@@ -934,5 +1301,37 @@ const styles = StyleSheet.create({
         bottom: -10,
         borderRadius: 20,
         borderWidth: 2,
+    },
+    guideSection: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 16,
+        borderRadius: 12,
+        borderWidth: 1,
+        marginBottom: 12,
+        gap: 16,
+    },
+    guideIcon: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    guideTitle: {
+        fontSize: 13,
+        fontWeight: 'bold',
+        letterSpacing: 1,
+        marginBottom: 2,
+    },
+    guideDesc: {
+        fontSize: 11,
+        lineHeight: 16,
+    },
+    helpBtn: {
+        width: 40,
+        height: 40,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
 });
