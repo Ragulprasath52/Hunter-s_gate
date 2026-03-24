@@ -15,6 +15,9 @@ export default function ProfileScreen() {
     const [profile, setProfile] = useState(null);
     const [workouts, setWorkouts] = useState([]);
     const [customExerciseName, setCustomExerciseName] = useState('');
+    const [isSyncModalVisible, setIsSyncModalVisible] = useState(false);
+    const [syncUid, setSyncUid] = useState('');
+    const [isSyncing, setIsSyncing] = useState(false);
 
     useFocusEffect(
         useCallback(() => {
@@ -97,6 +100,51 @@ export default function ProfileScreen() {
             await Share.share({ message: data, title: 'Hunter Stats Backup' });
         } catch {
             Alert.alert('ERROR', 'E-Rank performance: Export failed.');
+        }
+    };
+
+    const handleSyncConnect = async () => {
+        if (!syncUid || syncUid.trim().length === 0) {
+            Alert.alert('Error', 'Please enter a valid Hunter ID.');
+            return;
+        }
+
+        setIsSyncing(true);
+        try {
+            const result = await StorageService.importCloudData(syncUid.trim());
+            if (result) {
+                setProfile(result.profile);
+                setWorkouts(result.workouts);
+                setIsSyncModalVisible(false);
+                setSyncUid('');
+                Alert.alert('SYNC SUCCESS', 'Equipment and stats have been synchronized from the cloud.');
+            } else {
+                Alert.alert('Sync Failed', 'Could not find data for this Hunter ID.');
+            }
+        } catch (error) {
+            console.error(error);
+            Alert.alert('Sync Error', 'An error occurred during synchronization.');
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+
+    const handleManualSync = async () => {
+        if (!profile?.uid) return;
+        setIsSyncing(true);
+        try {
+            await StorageService.saveUserProfile(profile);
+            Alert.alert('SYNC COMPLETE', 'Your local battle data has been sent to the cloud.');
+        } catch {
+            Alert.alert('Sync Error', 'Failed to reach the cloud server.');
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+
+    const copyUid = () => {
+        if (profile?.uid) {
+            Share.share({ message: profile.uid });
         }
     };
 
@@ -259,76 +307,171 @@ export default function ProfileScreen() {
                 </FadeInView>
 
                 <FadeInView delay={700}>
-                    <TouchableOpacity style={[styles.actionBtn, { borderColor: colors.primary, backgroundColor: colors.backgroundSecondary }]} onPress={handleExport}>
-                        <Text style={[styles.actionBtnText, { color: colors.primary }]}>EXPORT DATA (JSON)</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity style={[styles.dangerBtn, { borderColor: '#ff3333' }]} onPress={handleClearData}>
-                        <Text style={[styles.dangerBtnText, { color: '#ff3333' }]}>RESET SYSTEM</Text>
-                    </TouchableOpacity>
-
-                    <View style={[styles.about, { borderColor: colors.border, backgroundColor: colors.backgroundSecondary }]}>
+                    <View style={[styles.about, { borderColor: colors.border, backgroundColor: colors.backgroundSecondary, marginBottom: 20 }]}>
                         <Text style={[styles.aboutTitle, { color: colors.primary }]}>ABOUT</Text>
                         <Text style={[styles.aboutBody, { color: colors.textSecondary }]}>
-                            Hunter Gate: Gym log tracker is a local-first training log with XP, ranks, and quests. Data stays on your device via AsyncStorage.
+                            Hunter Gate: Gym log tracker is a local-first training log with XP, ranks, and quests. Data synchronized via Hunter ID.
                         </Text>
-                        <Text style={[styles.aboutVer, { color: colors.textSecondary }]}>Version 1.0.0</Text>
+                        <Text style={[styles.aboutVer, { color: colors.textSecondary }]}>Version 1.1.0</Text>
                     </View>
+
+                    {/* Hunter Sync Section */}
+                    <View style={[styles.infoSection, { borderColor: colors.primary, backgroundColor: colors.backgroundSecondary }]}>
+                        <View style={[styles.glowLineTop, { backgroundColor: colors.primary }]} />
+                        <Text style={[styles.infoTitle, { color: colors.primary }]}>⟨ HUNTER SYNC ⟩</Text>
+                        
+                        <View style={styles.uidContainer}>
+                            <Text style={[styles.uidLabel, { color: colors.textSecondary }]}>YOUR HUNTER ID:</Text>
+                            <TouchableOpacity onPress={copyUid} style={styles.uidRow}>
+                                <Text style={[styles.uidText, { color: colors.textPrimary }]} numberOfLines={1}>
+                                    {profile?.uid || 'INITIALIZING...'}
+                                </Text>
+                                <Ionicons name="copy-outline" size={16} color={colors.primary} style={{ marginLeft: 8 }} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <Text style={[styles.hint, { color: colors.textSecondary, marginBottom: 16 }]}>
+                            Use this ID to sync your progress to another device or backup your data.
+                        </Text>
+
+                        <View style={{ flexDirection: 'row', gap: 10 }}>
+                            <TouchableOpacity 
+                                style={[styles.syncBtn, { borderColor: colors.primary, flex: 1 }]} 
+                                onPress={() => setIsSyncModalVisible(true)}
+                            >
+                                <Text style={[styles.syncBtnText, { color: colors.primary }]}>CONNECT SYSTEM</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity 
+                                style={[styles.syncBtn, { borderColor: colors.success, flex: 1, backgroundColor: colors.transparentSuccess }]} 
+                                onPress={handleManualSync}
+                                disabled={isSyncing}
+                            >
+                                <Text style={[styles.syncBtnText, { color: colors.success }]}>
+                                    {isSyncing ? 'SYNCING...' : 'SYNC NOW ✦'}
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+
+                    <TouchableOpacity 
+                        style={[styles.exportBtn, { borderColor: colors.border, backgroundColor: colors.backgroundSecondary }]} 
+                        onPress={handleExport}
+                    >
+                        <Text style={[styles.exportText, { color: colors.textSecondary }]}>EXPORT RAW DATA ⤓</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity 
+                        style={styles.dangerBtn} 
+                        onPress={handleClearData}
+                    >
+                        <Text style={styles.dangerBtnText}>WIPE SYSTEM DATA ☠</Text>
+                    </TouchableOpacity>
+
+                    <View style={{ height: 60 }} />
                 </FadeInView>
-
-                <View style={{ height: 100 }} />
             </ScrollView>
-            </FadeInView>
+        </FadeInView>
 
-            {/* Android Edit Modal */}
-            <Modal
-                visible={isEditModalVisible}
-                transparent={true}
-                animationType="fade"
-                onRequestClose={() => setIsEditModalVisible(false)}
+        {/* Sync Modal */}
+        <Modal
+            visible={isSyncModalVisible}
+            transparent={true}
+            animationType="fade"
+            onRequestClose={() => setIsSyncModalVisible(false)}
+        >
+            <TouchableOpacity 
+                activeOpacity={1} 
+                style={styles.modalOverlay} 
+                onPress={() => setIsSyncModalVisible(false)}
             >
                 <TouchableOpacity 
                     activeOpacity={1} 
-                    style={styles.modalOverlay} 
-                    onPress={() => setIsEditModalVisible(false)}
+                    style={[styles.modalContent, { backgroundColor: colors.backgroundSecondary, borderColor: colors.primary }]}
+                    onPress={() => {}}
                 >
-                    <TouchableOpacity 
-                        activeOpacity={1} 
-                        style={[styles.modalContent, { backgroundColor: colors.backgroundSecondary, borderColor: colors.primary }]}
-                        onPress={() => {}} // dummy to prevent closing when clicking content
-                    >
-                        <View style={[styles.glowLineTop, { backgroundColor: colors.primary }]} />
-                        <Text style={[styles.modalTitle, { color: colors.primary }]}>⟨ SYSTEM IDENTITY ⟩</Text>
-                        <Text style={[styles.modalHint, { color: colors.textSecondary }]}>Enter your hunter name to register in the system.</Text>
-                        
-                        <TextInput
-                            style={[styles.modalInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]}
-                            value={tempName}
-                            onChangeText={setTempName}
-                            placeholder="Hunter Name"
-                            placeholderTextColor={colors.textSecondary}
-                            autoFocus={true}
-                            maxLength={20}
-                        />
+                    <View style={[styles.glowLineTop, { backgroundColor: colors.primary }]} />
+                    <Text style={[styles.modalTitle, { color: colors.primary }]}>⟨ CONNECT HUNTER SYSTEM ⟩</Text>
+                    <Text style={[styles.modalHint, { color: colors.textSecondary }]}>Enter the Hunter ID from your other device to synchronize battle records.</Text>
+                    
+                    <TextInput
+                        style={[styles.modalInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]}
+                        value={syncUid}
+                        onChangeText={setSyncUid}
+                        placeholder="hunter-xxxx-xxxx"
+                        placeholderTextColor="#555"
+                        autoCapitalize="none"
+                    />
 
-                        <View style={styles.modalButtons}>
-                            <TouchableOpacity 
-                                style={[styles.modalBtn, { borderColor: colors.border }]} 
-                                onPress={() => setIsEditModalVisible(false)}
-                            >
-                                <Text style={{ color: colors.textSecondary, fontWeight: 'bold' }}>CANCEL</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity 
-                                style={[styles.modalBtn, { borderColor: colors.primary, backgroundColor: colors.transparentPrimary }]} 
-                                onPress={saveName}
-                            >
-                                <Text style={{ color: colors.primary, fontWeight: 'bold' }}>REGISTER</Text>
-                            </TouchableOpacity>
-                        </View>
+                    <View style={styles.modalButtons}>
+                        <TouchableOpacity 
+                            style={[styles.modalBtn, { borderColor: colors.textSecondary }]} 
+                            onPress={() => setIsSyncModalVisible(false)}
+                        >
+                            <Text style={{ color: colors.textSecondary }}>CANCEL</Text>
                         </TouchableOpacity>
-                    </TouchableOpacity>
-            </Modal>
-        </View>
+                        <TouchableOpacity 
+                            style={[styles.modalBtn, { borderColor: colors.primary, backgroundColor: colors.transparentPrimary }]} 
+                            onPress={handleSyncConnect}
+                            disabled={isSyncing}
+                        >
+                            <Text style={{ color: colors.primary, fontWeight: 'bold' }}>
+                                {isSyncing ? 'CONNECTING...' : 'SYNC & LOAD'}
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+                </TouchableOpacity>
+            </TouchableOpacity>
+        </Modal>
+
+        {/* Android Edit Modal */}
+        <Modal
+            visible={isEditModalVisible}
+            transparent={true}
+            animationType="fade"
+            onRequestClose={() => setIsEditModalVisible(false)}
+        >
+            <TouchableOpacity 
+                activeOpacity={1} 
+                style={styles.modalOverlay} 
+                onPress={() => setIsEditModalVisible(false)}
+            >
+                <TouchableOpacity 
+                    activeOpacity={1} 
+                    style={[styles.modalContent, { backgroundColor: colors.backgroundSecondary, borderColor: colors.primary }]}
+                    onPress={() => {}}
+                >
+                    <View style={[styles.glowLineTop, { backgroundColor: colors.primary }]} />
+                    <Text style={[styles.modalTitle, { color: colors.primary }]}>⟨ SYSTEM IDENTITY ⟩</Text>
+                    <Text style={[styles.modalHint, { color: colors.textSecondary }]}>Enter your hunter name to register in the system.</Text>
+                    
+                    <TextInput
+                        style={[styles.modalInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]}
+                        value={tempName}
+                        onChangeText={setTempName}
+                        placeholder="Hunter Name"
+                        placeholderTextColor={colors.textSecondary}
+                        autoFocus={true}
+                        maxLength={20}
+                    />
+
+                    <View style={styles.modalButtons}>
+                        <TouchableOpacity 
+                            style={[styles.modalBtn, { borderColor: colors.border }]} 
+                            onPress={() => setIsEditModalVisible(false)}
+                        >
+                            <Text style={{ color: colors.textSecondary, fontWeight: 'bold' }}>CANCEL</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity 
+                            style={[styles.modalBtn, { borderColor: colors.primary, backgroundColor: colors.transparentPrimary }]} 
+                            onPress={saveName}
+                        >
+                            <Text style={{ color: colors.primary, fontWeight: 'bold' }}>REGISTER</Text>
+                        </TouchableOpacity>
+                    </View>
+                </TouchableOpacity>
+            </TouchableOpacity>
+        </Modal>
+    </View>
     );
 }
 
@@ -438,6 +581,39 @@ const styles = StyleSheet.create({
     actionBtnText: { fontSize: 13, fontWeight: 'bold', letterSpacing: 2 },
     dangerBtn: { borderWidth: 1, padding: 16, borderRadius: SIZES.radiusSm || 12, alignItems: 'center', marginBottom: 24, backgroundColor: 'rgba(255,51,51,0.1)' },
     dangerBtnText: { fontSize: 13, fontWeight: 'bold', letterSpacing: 2 },
+    uidContainer: {
+        marginBottom: 12,
+        padding: 12,
+        backgroundColor: 'rgba(0,0,0,0.2)',
+        borderRadius: 8,
+    },
+    uidLabel: { fontSize: 10, fontWeight: 'bold', marginBottom: 4 },
+    uidRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    uidText: { fontSize: 13, flex: 1, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' },
+    syncBtn: {
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        borderRadius: 8,
+        borderWidth: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    syncBtnText: {
+        fontSize: 11,
+        fontWeight: 'bold',
+        letterSpacing: 1,
+    },
+    exportBtn: {
+        padding: 16,
+        borderRadius: 8,
+        borderWidth: 1,
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    exportText: {
+        fontSize: 12,
+        fontWeight: 'bold',
+    },
     addExerciseRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
     exerciseInput: { flex: 1, borderWidth: 1, padding: 12, borderRadius: SIZES.radiusSm || 8, fontSize: 14 },
     addBtn: { borderWidth: 1, paddingHorizontal: 20, justifyContent: 'center', alignItems: 'center', borderRadius: SIZES.radiusSm || 8 },

@@ -103,13 +103,18 @@ export const StorageService = {
     async saveUserProfile(profile) {
         await AsyncStorage.setItem(KEYS.USER_PROFILE, JSON.stringify(profile));
         if (profile.uid) {
+            const workoutsStr = await AsyncStorage.getItem(KEYS.WORKOUTS);
+            const achievementsStr = await AsyncStorage.getItem(KEYS.ACHIEVEMENTS);
+            
             FirebaseService.syncUserData(profile.uid, {
                 name: profile.name,
                 totalXP: profile.totalXP,
                 level: profile.level,
                 streak: profile.streak,
                 bestStreak: profile.bestStreak,
-                lastWorkoutDate: profile.lastWorkoutDate
+                lastWorkoutDate: profile.lastWorkoutDate,
+                workouts: workoutsStr ? JSON.parse(workoutsStr) : [],
+                achievements: achievementsStr ? JSON.parse(achievementsStr) : []
             });
         }
     },
@@ -152,11 +157,32 @@ export const StorageService = {
                 streak: updatedProfile.streak,
                 bestStreak: updatedProfile.bestStreak,
                 lastWorkoutDate: updatedProfile.lastWorkoutDate,
-                workoutsCount: newWorkouts.length
+                workouts: newWorkouts,
+                achievements: achievements
             });
         }
 
         return { workouts: newWorkouts, achievements };
+    },
+
+    async importCloudData(uid) {
+        if (!uid) return null;
+        const cloudData = await FirebaseService.fetchUserData(uid);
+        if (cloudData) {
+            const { workouts, achievements, ...profile } = cloudData;
+            
+            // Re-inject UID if missing in profile object but known from fetch
+            const finalProfile = { ...profile, uid: uid };
+
+            await Promise.all([
+                AsyncStorage.setItem(KEYS.USER_ID, uid),
+                AsyncStorage.setItem(KEYS.USER_PROFILE, JSON.stringify(finalProfile)),
+                AsyncStorage.setItem(KEYS.WORKOUTS, JSON.stringify(workouts || [])),
+                AsyncStorage.setItem(KEYS.ACHIEVEMENTS, JSON.stringify(achievements || []))
+            ]);
+            return { profile: finalProfile, workouts: workouts || [], achievements: achievements || [] };
+        }
+        return null;
     },
 
     async saveBodyStats(bodyStats) {

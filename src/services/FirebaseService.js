@@ -25,10 +25,29 @@ export const FirebaseService = {
                 }
             });
             if (!response.ok) {
-                console.warn('Firebase sync failed:', response.statusText);
+                const errText = await response.text();
+                console.warn('Firebase sync failed:', response.status, errText);
             }
         } catch (error) {
             console.error('Error syncing with Firebase:', error);
+        }
+    },
+
+    /**
+     * Fetch all data for a specific user.
+     * @param {string} uid Unique User ID
+     * @returns {Promise<object|null>} User data or null
+     */
+    async fetchUserData(uid) {
+        if (!uid) return null;
+        try {
+            const url = `${DATABASE_URL}/users/${uid}.json`;
+            const response = await fetch(url);
+            if (!response.ok) return null;
+            return await response.json();
+        } catch (error) {
+            console.error('Error fetching user from Firebase:', error);
+            return null;
         }
     },
 
