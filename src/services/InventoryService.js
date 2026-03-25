@@ -70,6 +70,47 @@ export const INVENTORY_ITEMS = [
         description: 'A clean blue digital pulse.',
         requirement: 'Reach Level 20',
         unlockCheck: (profile) => (profile.level || 1) >= 20,
+    },
+    {
+        id: 'title_candidate',
+        type: 'title',
+        name: 'Hunter Candidate',
+        description: 'You have just awakened to the system.',
+        requirement: 'Initial Registration',
+        unlockCheck: () => true, 
+        preUnlocked: true, // Standard issue title
+    },
+    {
+        id: 'title_scrapper',
+        type: 'title',
+        name: 'E-Rank Scrapper',
+        description: 'Surviving your first few raids.',
+        requirement: 'Reach Level 2',
+        unlockCheck: (profile) => (profile.level || 1) >= 2,
+    },
+    {
+        id: 'title_hungry',
+        type: 'title',
+        name: 'Hungry for Growth',
+        description: 'A hunter who never misses a session.',
+        requirement: 'Maintain a 3-day streak',
+        unlockCheck: (profile) => (profile.streak || 0) >= 3,
+    },
+    {
+        id: 'aura_faint',
+        type: 'aura',
+        name: 'Faint Awakening Aura',
+        description: 'A subtle white glow indicating a new presence.',
+        requirement: 'Reach Level 5',
+        unlockCheck: (profile) => (profile.level || 1) >= 5,
+    },
+    {
+        id: 'border_carbon',
+        type: 'border',
+        name: 'Reinforced Carbon Frame',
+        description: 'A standard-issue durable frame.',
+        requirement: 'Complete 5 Raids',
+        unlockCheck: (profile, workouts) => (workouts || []).length >= 5,
     }
 ];
 

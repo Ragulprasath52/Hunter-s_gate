@@ -12,7 +12,11 @@ export default function ExerciseSessionCard({
     onToggleSetComplete,
     onRemoveExercise,
     historyData,
-    isBodyweight
+    isBodyweight,
+    isTimed,
+    mainMuscle,
+    subMuscle,
+    xp
 }) {
     const { colors } = useTheme();
 
@@ -20,21 +24,37 @@ export default function ExerciseSessionCard({
         <View style={[styles.card, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
             <View style={styles.header}>
                 <View style={styles.titleRow}>
-                    <Text style={[styles.title, { color: colors.primary }]}>{exercise.name}</Text>
+                    <Text style={[styles.title, { color: colors.primary }]}>{typeof exercise.name === 'string' ? exercise.name : (exercise.name?.name || 'Unknown Exercise')}</Text>
                     <TouchableOpacity onPress={onRemoveExercise} style={styles.removeBtn}>
                         <Ionicons name="close-circle-outline" size={20} color={colors.textSecondary} />
                     </TouchableOpacity>
                 </View>
-                <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-                    {exercise.sets.length} SETS TOTAL
-                </Text>
+                <View style={styles.metaRow}>
+                    <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+                        {exercise.sets.length} SETS TOTAL
+                    </Text>
+                    <View style={styles.muscleTags}>
+                        <View style={[styles.tag, { backgroundColor: 'rgba(0,212,255,0.1)', borderColor: colors.primary }]}>
+                            <Text style={[styles.tagText, { color: colors.primary }]}>{mainMuscle}</Text>
+                        </View>
+                        <View style={[styles.tag, { backgroundColor: 'rgba(255,255,255,0.05)', borderColor: colors.border }]}>
+                            <Text style={[styles.tagText, { color: colors.textSecondary }]}>{subMuscle}</Text>
+                        </View>
+                    </View>
+                    {xp > 0 && (
+                        <View style={styles.xpReadout}>
+                            <Ionicons name="flash" size={12} color={colors.warning} />
+                            <Text style={[styles.xpText, { color: colors.warning }]}>+{Math.floor(xp)} XP</Text>
+                        </View>
+                    )}
+                </View>
             </View>
 
             <View style={styles.tableHeader}>
                 <View style={styles.setNumCol}><Text style={[styles.headerText, { color: colors.textSecondary }]}>SET</Text></View>
                 <View style={styles.prevCol}><Text style={[styles.headerText, { color: colors.textSecondary }]}>PREV</Text></View>
-                <View style={styles.inputCol}><Text style={[styles.headerText, { color: colors.textSecondary }]}>KG</Text></View>
-                <View style={styles.inputCol}><Text style={[styles.headerText, { color: colors.textSecondary }]}>REPS</Text></View>
+                {!isTimed && <View style={styles.inputCol}><Text style={[styles.headerText, { color: colors.textSecondary }]}>KG</Text></View>}
+                <View style={styles.inputCol}><Text style={[styles.headerText, { color: colors.textSecondary }]}>{isTimed ? 'SEC' : 'REPS'}</Text></View>
                 <View style={styles.checkCol}></View>
                 <View style={styles.deleteCol}></View>
             </View>
@@ -45,11 +65,14 @@ export default function ExerciseSessionCard({
                     setNumber={index + 1}
                     weight={set.weight}
                     reps={set.reps}
+                    duration={set.duration}
                     isCompleted={set.isCompleted}
                     isBodyweight={isBodyweight}
+                    isTimed={isTimed}
                     previousData={historyData?.[index]}
                     onUpdateWeight={(val) => onUpdateSet(set.id, 'weight', val)}
                     onUpdateReps={(val) => onUpdateSet(set.id, 'reps', val)}
+                    onUpdateDuration={(val) => onUpdateSet(set.id, 'duration', val)}
                     onToggleComplete={() => onToggleSetComplete(set.id)}
                     onDelete={() => onDeleteSet(set.id)}
                 />
@@ -125,5 +148,37 @@ const styles = StyleSheet.create({
         fontSize: 11,
         fontWeight: 'bold',
         letterSpacing: 1,
+    },
+    metaRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        marginTop: 4,
+        gap: 10,
+    },
+    muscleTags: {
+        flexDirection: 'row',
+        gap: 6,
+    },
+    tag: {
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 4,
+        borderWidth: 1,
+    },
+    tagText: {
+        fontSize: 8,
+        fontWeight: 'bold',
+        textTransform: 'uppercase',
+    },
+    xpReadout: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        marginLeft: 'auto',
+    },
+    xpText: {
+        fontSize: 10,
+        fontWeight: 'bold',
     }
 });

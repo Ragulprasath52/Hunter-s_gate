@@ -76,5 +76,25 @@ export const FirebaseService = {
             console.error('Error fetching leaderboard:', error);
             return [];
         }
+    },
+
+    /**
+     * Permanent user data incineration.
+     * @param {string} uid Unique User ID
+     */
+    async deleteUserData(uid) {
+        if (!uid) return;
+        try {
+            const url = `${DATABASE_URL}/users/${uid}.json`;
+            const response = await fetch(url, {
+                method: 'DELETE'
+            });
+            if (!response.ok) {
+                const errText = await response.text();
+                console.warn('Firebase deletion failed:', response.status, errText);
+            }
+        } catch (error) {
+            console.error('Error deleting user from Firebase:', error);
+        }
     }
 };

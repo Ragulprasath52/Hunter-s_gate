@@ -53,6 +53,26 @@ export default function LeaderboardScreen() {
         return colors.primary;
     };
 
+    const getAuraColor = (auraId) => {
+        switch (auraId) {
+            case 'aura_purple': return '#bf00ff';
+            case 'aura_blue': return colors.accent || colors.primary;
+            case 'aura_red': return '#ff3333';
+            case 'aura_black': return '#111111';
+            case 'aura_faint': return 'rgba(255, 255, 255, 0.4)';
+            default: return null;
+        }
+    };
+
+    const getBorderColor = (borderId) => {
+        switch (borderId) {
+            case 'border_gold': return '#FFD700';
+            case 'border_neon': return '#00f2ff';
+            case 'border_carbon': return '#333333';
+            default: return null;
+        }
+    };
+
     const hunterStats = useMemo(() => {
         if (!selectedHunter) return null;
 
@@ -99,6 +119,8 @@ export default function LeaderboardScreen() {
                             const isMe = item.id === currentUser?.uid;
                             const hunterRank = getRank(item.level || 1);
                             const rankColor = getRankColor(hunterRank, index);
+                            const equippedBorder = getBorderColor(item.equipped?.border);
+                            const equippedAura = getAuraColor(item.equipped?.aura);
 
                             return (
                                 <FadeInView key={item.id} delay={index * 50} duration={400}>
@@ -112,8 +134,13 @@ export default function LeaderboardScreen() {
                                             styles.rankCard,
                                             {
                                                 backgroundColor: index < 3 ? (rankColor + '0D') : colors.backgroundSecondary,
-                                                borderColor: isMe ? colors.primary : (index < 3 ? rankColor : colors.border),
-                                                borderWidth: (isMe || index < 3) ? 2 : 1
+                                                borderColor: equippedBorder || (isMe ? colors.primary : (index < 3 ? rankColor : colors.border)),
+                                                borderWidth: (equippedBorder || isMe || index < 3) ? 2 : 1,
+                                                shadowColor: equippedAura || 'transparent',
+                                                shadowOffset: equippedAura ? { width: 0, height: 0 } : { width: 0, height: 0 },
+                                                shadowOpacity: equippedAura ? 0.8 : 0,
+                                                shadowRadius: equippedAura ? 10 : 0,
+                                                elevation: equippedAura ? 5 : 0
                                             }
                                         ]}
                                     >
@@ -131,6 +158,7 @@ export default function LeaderboardScreen() {
                                             </Text>
                                             <Text style={[styles.userStats, { color: colors.textSecondary }]}>
                                                 Level {item.level || 1} · {Math.round(item.totalXP || 0)} XP
+                                                {item.equipped?.title ? ` · ✦ ${InventoryService.getItem(item.equipped.title)?.name || ''}` : ''}
                                             </Text>
                                         </View>
 
@@ -162,29 +190,38 @@ export default function LeaderboardScreen() {
                 >
                     <TouchableOpacity
                         activeOpacity={1}
-                        style={[styles.modalContent, { backgroundColor: colors.backgroundSecondary, borderColor: hunterStats?.rankColor || colors.primary, maxHeight: '90%' }]}
+                        style={[
+                            styles.modalContent,
+                            {
+                                backgroundColor: colors.backgroundSecondary,
+                                borderColor: getBorderColor(selectedHunter?.equipped?.border) || colors.border,
+                                shadowColor: getAuraColor(selectedHunter?.equipped?.aura) || 'transparent',
+                                shadowOpacity: getAuraColor(selectedHunter?.equipped?.aura) ? 0.8 : 0,
+                                shadowRadius: 20,
+                                shadowOffset: { width: 0, height: 0 },
+                                elevation: getAuraColor(selectedHunter?.equipped?.aura) ? 10 : 0,
+                                maxHeight: '85%'
+                            }
+                        ]}
                         onPress={() => { }}
                     >
-                        <View style={[styles.glowLineTop, { backgroundColor: hunterStats?.rankColor || colors.primary }]} />
-
                         <ScrollView showsVerticalScrollIndicator={false}>
+                            <View style={[styles.glowLineTop, { backgroundColor: hunterStats?.rankColor || colors.primary }]} />
                             <View style={styles.modalHeader}>
-                                <View style={[styles.avatarLarge, { borderColor: hunterStats?.rankColor || colors.primary, backgroundColor: (hunterStats?.rankColor || colors.primary) + '1A' }]}>
-                                    <Text style={[styles.avatarText, { color: hunterStats?.rankColor || colors.primary }]}>
+                                <View style={[styles.modalAvatar, { borderColor: hunterStats?.rankColor || colors.primary, backgroundColor: colors.background }]}>
+                                    <Text style={[styles.modalAvatarText, { color: hunterStats?.rankColor || colors.primary }]}>
                                         {(selectedHunter?.name || 'H').charAt(0).toUpperCase()}
                                     </Text>
                                 </View>
-                                <Text style={[styles.modalHunterName, { color: colors.textPrimary }]}>
-                                    {selectedHunter?.name || 'Anonymous Hunter'}
-                                </Text>
-                                {hunterStats?.equippedTitle && (
+                                <Text style={[styles.modalHunterName, { color: colors.textPrimary }]}>{selectedHunter?.name || 'Anonymous'}</Text>
+                                {selectedHunter?.equipped?.title && (
                                     <Text style={[styles.modalTitleText, { color: colors.accent || colors.primary }]}>
-                                        ⟨ {hunterStats.equippedTitle} ⟩
+                                        ⟨ {InventoryService.getItem(selectedHunter.equipped.title)?.name.toUpperCase()} ⟩
                                     </Text>
                                 )}
-                                <View style={[styles.modalRankBadge, { borderColor: hunterStats?.rankColor || colors.success, backgroundColor: (hunterStats?.rankColor || colors.success) + '1A' }]}>
-                                    <Text style={[styles.modalRankText, { color: hunterStats?.rankColor || colors.success }]}>
-                                        {hunterStats?.rankName || 'HUNTER'} · RANK #{hunterStats?.rankIndex !== undefined ? hunterStats.rankIndex + 1 : '??'}
+                                <View style={[styles.rankPill, { backgroundColor: (hunterStats?.rankColor || colors.primary) + '22', borderColor: hunterStats?.rankColor || colors.primary }]}>
+                                    <Text style={[styles.rankPillText, { color: hunterStats?.rankColor || colors.primary }]}>
+                                        {hunterStats?.rankName.toUpperCase()} · RANK #{leaderboard.findIndex(h => h.id === selectedHunter?.id) + 1}
                                     </Text>
                                 </View>
                             </View>
@@ -192,9 +229,7 @@ export default function LeaderboardScreen() {
                             <View style={styles.modalStatsGrid}>
                                 <View style={styles.modalStatItem}>
                                     <Text style={[styles.modalStatLabel, { color: colors.textSecondary }]}>LEVEL</Text>
-                                    <Text style={[styles.modalStatValue, { color: colors.textPrimary }]}>
-                                        {selectedHunter?.level || 1}
-                                    </Text>
+                                    <Text style={[styles.modalStatValue, { color: colors.textPrimary }]}>{selectedHunter?.level || 1}</Text>
                                 </View>
                                 <View style={styles.modalStatItem}>
                                     <Text style={[styles.modalStatLabel, { color: colors.textSecondary }]}>XP</Text>
@@ -254,20 +289,20 @@ export default function LeaderboardScreen() {
                                 </View>
                             </View>
 
-                            <Text style={[styles.lastSyncText, { color: colors.textMuted || colors.textSecondary }]}>
-                                System Identification: {selectedHunter?.id?.substring(0, 15)}...
-                                {"\n"}Last System Sync: {hunterStats?.lastActive}
-                            </Text>
+                                <Text style={[styles.lastSyncText, { color: colors.textMuted || colors.textSecondary }]}>
+                                    System Identification: {selectedHunter?.id?.substring(0, 15)}...
+                                    {"\n"}Last System Sync: {hunterStats?.lastActive}
+                                </Text>
+                                <View style={{ height: 10 }} />
+                            </ScrollView>
 
                             <TouchableOpacity
-                                style={[styles.closeBtn, { backgroundColor: hunterStats?.rankColor || colors.primary }]}
+                                style={[styles.closeBtn, { backgroundColor: hunterStats?.rankColor || colors.primary, marginTop: 10 }]}
                                 onPress={() => setIsModalVisible(false)}
                             >
                                 <Text style={[styles.closeBtnText, { color: (hunterStats?.rankIndex === 0 || hunterStats?.rankIndex === 1) ? '#000' : '#fff' }]}>CLOSE FILE</Text>
                             </TouchableOpacity>
-                            <View style={{ height: 20 }} />
-                        </ScrollView>
-                    </TouchableOpacity>
+                        </TouchableOpacity>
                 </TouchableOpacity>
             </Modal>
         </View>

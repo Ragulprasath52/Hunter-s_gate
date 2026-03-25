@@ -13,6 +13,10 @@ const KEYS = {
     SESSIONS: 'sessions', // For historical session data
 };
 
+const DEFAULT_SETTINGS = {
+    theme: 'dark',
+};
+
 export const INITIAL_PROFILE = {
     uid: null,
     name: 'Hunter',
@@ -48,10 +52,6 @@ function freshProfile() {
     };
 }
 
-const DEFAULT_SETTINGS = {
-    theme: 'dark',
-};
-
 function normalizeProfile(p) {
     if (!p) return freshProfile();
     return {
@@ -59,12 +59,18 @@ function normalizeProfile(p) {
         ...p,
         createdDate: p.createdDate || new Date().toISOString(),
         bodyStats: { ...INITIAL_PROFILE.bodyStats, ...(p.bodyStats || {}) },
-        customExercises: p.customExercises || [],
+        customExercises: (p.customExercises || []).map(ex => typeof ex === 'string' ? ex : (ex.name || 'Custom Exercise')),
         inventory: p.inventory || [],
         equipped: { ...INITIAL_PROFILE.equipped, ...(p.equipped || {}) },
         activeDungeon: p.activeDungeon || null,
         dungeonStartedAt: p.dungeonStartedAt || null,
-        activeSession: p.activeSession || null,
+        activeSession: p.activeSession ? {
+            ...p.activeSession,
+            exercises: (p.activeSession.exercises || []).map(ex => ({
+                ...ex,
+                name: typeof ex.name === 'string' ? ex.name : (ex.name?.name || 'Unknown Exercise')
+            }))
+        } : null,
     };
 }
 
@@ -95,9 +101,19 @@ export const StorageService = {
                 profile.uid = await this.getOrCreateUID();
             }
 
+            const workoutsRaw = workoutsItem ? JSON.parse(workoutsItem) : [];
+            const workouts = workoutsRaw.map(w => ({
+                ...w,
+                exercise: typeof w.exercise === 'string' ? w.exercise : (w.exercise?.name || 'Unknown Exercise')
+            }));
+
+            const sessionsItem = await AsyncStorage.getItem(KEYS.SESSIONS);
+            const sessions = sessionsItem ? JSON.parse(sessionsItem) : [];
+
             return {
                 profile,
-                workouts: workoutsItem ? JSON.parse(workoutsItem) : [],
+                workouts,
+                sessions,
                 achievements,
                 settings: settingsItem ? { ...DEFAULT_SETTINGS, ...JSON.parse(settingsItem) } : { ...DEFAULT_SETTINGS },
             };
@@ -123,19 +139,42 @@ export const StorageService = {
             const workoutsStr = await AsyncStorage.getItem(KEYS.WORKOUTS);
             const achievementsStr = await AsyncStorage.getItem(KEYS.ACHIEVEMENTS);
             
-            FirebaseService.syncUserData(profile.uid, {
-                name: profile.name,
-                totalXP: profile.totalXP,
-                level: profile.level,
-                streak: profile.streak,
-                bestStreak: profile.bestStreak,
-                lastWorkoutDate: profile.lastWorkoutDate,
+            try {
+                await FirebaseService.syncUserData(profile.uid, {
+                    ...profile,
+                    workouts: workoutsStr ? JSON.parse(workoutsStr) : [],
+                    achievements: achievementsStr ? JSON.parse(achievementsStr) : [],
+                    lastSync: new Date().toISOString()
+                });
+            } catch (e) {
+                console.error('Failed to sync profile change:', e);
+            }
+        }
+    },
+
+    async saveBodyStats(stats) {
+        const item = await AsyncStorage.getItem(KEYS.USER_PROFILE);
+        let profile = normalizeProfile(item ? JSON.parse(item) : null);
+        
+        profile.bodyStats = {
+            ...profile.bodyStats,
+            ...stats
+        };
+
+        await AsyncStorage.setItem(KEYS.USER_PROFILE, JSON.stringify(profile));
+        
+        if (profile.uid) {
+            const workoutsStr = await AsyncStorage.getItem(KEYS.WORKOUTS);
+            const achievementsStr = await AsyncStorage.getItem(KEYS.ACHIEVEMENTS);
+            
+            await FirebaseService.syncUserData(profile.uid, {
+                ...profile,
                 workouts: workoutsStr ? JSON.parse(workoutsStr) : [],
                 achievements: achievementsStr ? JSON.parse(achievementsStr) : [],
-                inventory: profile.inventory || [],
-                equipped: profile.equipped || {}
+                lastSync: new Date().toISOString()
             });
         }
+        return profile;
     },
 
     async saveSession(session) {
@@ -143,6 +182,23 @@ export const StorageService = {
         const currentSessions = currentSessionsStr ? JSON.parse(currentSessionsStr) : [];
         const newSessions = [session, ...currentSessions];
         await AsyncStorage.setItem(KEYS.SESSIONS, JSON.stringify(newSessions));
+        
+        // Also trigger sync if profile exists
+        const profileStr = await AsyncStorage.getItem(KEYS.USER_PROFILE);
+        if (profileStr) {
+            const profile = JSON.parse(profileStr);
+            if (profile.uid) {
+                const workoutsStr = await AsyncStorage.getItem(KEYS.WORKOUTS);
+                const achievementsStr = await AsyncStorage.getItem(KEYS.ACHIEVEMENTS);
+                await FirebaseService.syncUserData(profile.uid, {
+                    ...profile,
+                    workouts: workoutsStr ? JSON.parse(workoutsStr) : [],
+                    sessions: newSessions,
+                    achievements: achievementsStr ? JSON.parse(achievementsStr) : [],
+                    lastSync: new Date().toISOString()
+                });
+            }
+        }
         return newSessions;
     },
 
@@ -154,9 +210,6 @@ export const StorageService = {
         await AsyncStorage.setItem(KEYS.ACHIEVEMENTS, JSON.stringify(achievements));
     },
 
-    /**
-     * Persists multiple workouts, updated profile, and merged achievements.
-     */
     async saveWorkoutsBulk(newWorkoutsArray, updatedProfile, achievementIdsToUnlock = []) {
         const currentWorkoutsStr = await AsyncStorage.getItem(KEYS.WORKOUTS);
         const currentWorkouts = currentWorkoutsStr ? JSON.parse(currentWorkoutsStr) : [];
@@ -176,23 +229,22 @@ export const StorageService = {
             AsyncStorage.setItem(KEYS.ACHIEVEMENTS, JSON.stringify(achievements)),
         ]);
 
-        // Inventory and Dungeon checks
         const newLoot = InventoryService.checkUnlocks(updatedProfile, mergedWorkouts);
         if (newLoot.length > 0) {
             updatedProfile.inventory = [...(updatedProfile.inventory || []), ...newLoot];
             await AsyncStorage.setItem(KEYS.USER_PROFILE, JSON.stringify(updatedProfile));
         }
 
-        if (updatedProfile.activeDungeon) {
-            // Re-use logic for dungeon clearance...
-            // (Keeping it simple for this bulk call)
-        }
-
         if (updatedProfile.uid) {
+            const sessionsStr = await AsyncStorage.getItem(KEYS.SESSIONS);
+            const sessions = sessionsStr ? JSON.parse(sessionsStr) : [];
+            
             FirebaseService.syncUserData(updatedProfile.uid, {
                 ...updatedProfile,
                 workouts: mergedWorkouts,
+                sessions: sessions,
                 achievements: achievements,
+                lastSync: new Date().toISOString()
             });
         }
 
@@ -219,15 +271,12 @@ export const StorageService = {
             AsyncStorage.setItem(KEYS.ACHIEVEMENTS, JSON.stringify(achievements)),
         ]);
 
-        // Check for new inventory unlocks
         const newLoot = InventoryService.checkUnlocks(updatedProfile, newWorkouts);
         if (newLoot.length > 0) {
             updatedProfile.inventory = [...(updatedProfile.inventory || []), ...newLoot];
-            // Re-save profile with new loot
             await AsyncStorage.setItem(KEYS.USER_PROFILE, JSON.stringify(updatedProfile));
         }
 
-        // Check for Dungeon Clearance
         if (updatedProfile.activeDungeon) {
             const dungeons = [
                 { id: 'dungeon_beginner', target: 5, reward: 500 },
@@ -242,7 +291,6 @@ export const StorageService = {
                     updatedProfile.totalXP += active.reward;
                     updatedProfile.activeDungeon = null;
                     updatedProfile.dungeonStartedAt = null;
-                    // Add a special dungeon clear item to inventory if not present
                     if (!updatedProfile.inventory.includes('title_slayer')) {
                         updatedProfile.inventory.push('title_slayer');
                     }
@@ -253,12 +301,7 @@ export const StorageService = {
 
         if (updatedProfile.uid) {
             FirebaseService.syncUserData(updatedProfile.uid, {
-                name: updatedProfile.name,
-                totalXP: updatedProfile.totalXP,
-                level: updatedProfile.level,
-                streak: updatedProfile.streak,
-                bestStreak: updatedProfile.bestStreak,
-                lastWorkoutDate: updatedProfile.lastWorkoutDate,
+                ...updatedProfile,
                 workouts: newWorkouts,
                 achievements: achievements,
                 inventory: updatedProfile.inventory,
@@ -267,9 +310,7 @@ export const StorageService = {
             });
         }
 
-        // Reset the 36-hour penalty timer
         NotificationService.resetPenaltyQuestTimer();
-
         return { workouts: newWorkouts, achievements };
     },
 
@@ -278,8 +319,6 @@ export const StorageService = {
         const cloudData = await FirebaseService.fetchUserData(uid);
         if (cloudData) {
             const { workouts, achievements, ...profile } = cloudData;
-            
-            // Re-inject UID if missing in profile object but known from fetch
             const finalProfile = { ...profile, uid: uid };
 
             await Promise.all([
@@ -291,13 +330,6 @@ export const StorageService = {
             return { profile: finalProfile, workouts: workouts || [], achievements: achievements || [] };
         }
         return null;
-    },
-
-    async saveBodyStats(bodyStats) {
-        const data = await this.loadAllData();
-        const profile = { ...data.profile, bodyStats: { ...data.profile.bodyStats, ...bodyStats } };
-        await this.saveUserProfile(profile);
-        return profile;
     },
 
     async exportData() {
@@ -316,12 +348,15 @@ export const StorageService = {
         );
     },
 
-    getWorkoutsSince(workouts, sinceDate) {
-        const t = new Date(sinceDate).getTime();
-        return workouts.filter((w) => new Date(w.date).getTime() >= t);
-    },
-
     async clearAllData() {
+        try {
+            const uid = await AsyncStorage.getItem(KEYS.USER_ID);
+            if (uid) {
+                await FirebaseService.deleteUserData(uid);
+            }
+        } catch (e) {
+            console.warn('Failed to delete cloud data during reset:', e);
+        }
         await AsyncStorage.clear();
     },
 };

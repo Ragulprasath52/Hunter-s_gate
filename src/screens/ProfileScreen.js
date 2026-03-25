@@ -86,7 +86,22 @@ export default function ProfileScreen() {
     const loadData = async () => {
         const data = await StorageService.loadAllData();
         if (data) {
-            setProfile(data.profile);
+            let nextProfile = { ...data.profile };
+            let newUnlocks = InventoryService.checkUnlocks(nextProfile, data.workouts);
+
+            // Automatically grant pre-unlocked items if not already in inventory
+            const preUnlockedItems = INVENTORY_ITEMS.filter(item => item.preUnlocked && !nextProfile.inventory.includes(item.id));
+            if (preUnlockedItems.length > 0) {
+                newUnlocks = [...newUnlocks, ...preUnlockedItems.map(item => item.id)];
+            }
+
+            if (newUnlocks.length > 0) {
+                nextProfile.inventory = [...(nextProfile.inventory || []), ...newUnlocks];
+                // Ensure unique items
+                nextProfile.inventory = Array.from(new Set(nextProfile.inventory));
+                await StorageService.saveUserProfile(nextProfile);
+            }
+            setProfile(nextProfile);
             setWorkouts(data.workouts);
         }
     };
@@ -243,7 +258,11 @@ export default function ProfileScreen() {
             return;
         }
 
-        const newExercise = { name, type: customExerciseType };
+        const newExercise = { 
+            name, 
+            type: customExerciseType,
+            isTimed: customExerciseType === 'timed'
+        };
 
         const nextProfile = {
             ...profile,
@@ -254,7 +273,7 @@ export default function ProfileScreen() {
         setProfile(nextProfile);
         setCustomExerciseName('');
         setCustomExerciseType('weighted');
-        showModal({ title: 'Exercise Registered', message: `"${name}" (${customExerciseType}) added to the Hunter log.`, type: 'SUCCESS' });
+        showModal({ title: 'Exercise Registered', message: `"${name}" (${customExerciseType.toUpperCase()}) added to the Hunter log.`, type: 'SUCCESS' });
     };
 
     const handleClearData = () => {
@@ -287,6 +306,7 @@ export default function ProfileScreen() {
             case 'aura_blue': return colors.accent || colors.primary;
             case 'aura_red': return '#ff3333';
             case 'aura_black': return '#111111';
+            case 'aura_faint': return 'rgba(255, 255, 255, 0.4)';
             default: return null;
         }
     };
@@ -295,6 +315,7 @@ export default function ProfileScreen() {
         switch (borderId) {
             case 'border_gold': return '#FFD700';
             case 'border_neon': return '#00f2ff';
+            case 'border_carbon': return '#333333';
             default: return colors.primary;
         }
     };
@@ -490,6 +511,16 @@ export default function ProfileScreen() {
                         >
                             <Text style={[styles.typeText, { color: colors.textSecondary }, customExerciseType === 'bodyweight' && { color: colors.success }]}>BODYWEIGHT</Text>
                         </TouchableOpacity>
+                        <TouchableOpacity 
+                            style={[
+                                styles.typeChip, 
+                                { borderColor: colors.border },
+                                customExerciseType === 'timed' && { borderColor: colors.warning, backgroundColor: 'rgba(255,170,0,0.1)' }
+                            ]} 
+                            onPress={() => setCustomExerciseType('timed')}
+                        >
+                            <Text style={[styles.typeText, { color: colors.textSecondary }, customExerciseType === 'timed' && { color: colors.warning }]}>TIMED</Text>
+                        </TouchableOpacity>
                     </View>
 
                     <View style={styles.addExerciseRow}>
@@ -609,16 +640,13 @@ export default function ProfileScreen() {
             animationType="fade"
             onRequestClose={() => setIsSyncModalVisible(false)}
         >
-            <TouchableOpacity 
-                activeOpacity={1} 
-                style={styles.modalOverlay} 
-                onPress={() => setIsSyncModalVisible(false)}
-            >
+            <View style={styles.modalOverlay}>
                 <TouchableOpacity 
                     activeOpacity={1} 
-                    style={[styles.modalContent, { backgroundColor: colors.backgroundSecondary, borderColor: colors.primary }]}
-                    onPress={() => {}}
-                >
+                    style={StyleSheet.absoluteFill} 
+                    onPress={() => setIsSyncModalVisible(false)} 
+                />
+                <View style={[styles.modalContent, { backgroundColor: colors.backgroundSecondary, borderColor: colors.primary }]}>
                     <View style={[styles.glowLineTop, { backgroundColor: colors.primary }]} />
                     <Text style={[styles.modalTitle, { color: colors.primary }]}>⟨ CONNECT HUNTER SYSTEM ⟩</Text>
                     <Text style={[styles.modalHint, { color: colors.textSecondary }]}>Enter the Hunter ID from your other device to synchronize battle records.</Text>
@@ -649,8 +677,8 @@ export default function ProfileScreen() {
                             </Text>
                         </TouchableOpacity>
                     </View>
-                </TouchableOpacity>
-            </TouchableOpacity>
+                </View>
+            </View>
         </Modal>
 
         {/* Android Edit Modal */}
@@ -660,29 +688,74 @@ export default function ProfileScreen() {
             animationType="fade"
             onRequestClose={() => setIsEditModalVisible(false)}
         >
-            <TouchableOpacity 
-                activeOpacity={1} 
-                style={styles.modalOverlay} 
-                onPress={() => setIsEditModalVisible(false)}
-            >
+            <View style={styles.modalOverlay}>
                 <TouchableOpacity 
                     activeOpacity={1} 
-                    style={[styles.modalContent, { backgroundColor: colors.backgroundSecondary, borderColor: colors.primary }]}
-                    onPress={() => {}}
-                >
+                    style={StyleSheet.absoluteFill} 
+                    onPress={() => setIsEditModalVisible(false)} 
+                />
+                <View style={[styles.modalContent, { backgroundColor: colors.backgroundSecondary, borderColor: colors.primary }]}>
                     <View style={[styles.glowLineTop, { backgroundColor: colors.primary }]} />
                     <Text style={[styles.modalTitle, { color: colors.primary }]}>⟨ SYSTEM IDENTITY ⟩</Text>
-                    <Text style={[styles.modalHint, { color: colors.textSecondary }]}>Enter your hunter name to register in the system.</Text>
-                    
+                    <Text style={[styles.modalLabel, { color: colors.textSecondary, marginTop: 16 }]}>HUNTER NAME</Text>
                     <TextInput
-                        style={[styles.modalInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]}
+                        style={[styles.modalInput, { borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary, marginBottom: 16 }]}
+                        placeholder="Enter your hunter name"
+                        placeholderTextColor={colors.textSecondary}
                         value={tempName}
                         onChangeText={setTempName}
-                        placeholder="Hunter Name"
-                        placeholderTextColor={colors.textSecondary}
-                        autoFocus={true}
                         maxLength={20}
                     />
+                     <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>SELECT ACTIVE TITLE</Text>
+                    <ScrollView 
+                        style={{ maxHeight: 120, marginVertical: 8 }}
+                        showsVerticalScrollIndicator={true}
+                    >
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                            <TouchableOpacity 
+                                onPress={async () => {
+                                    const next = { ...profile, equipped: { ...(profile.equipped || {}), title: null } };
+                                    await StorageService.saveUserProfile(next);
+                                    setProfile(next);
+                                }}
+                                style={{
+                                    paddingHorizontal: 12,
+                                    paddingVertical: 6,
+                                    borderRadius: 16,
+                                    borderWidth: 1,
+                                    borderColor: !profile.equipped?.title ? colors.primary : colors.border,
+                                    backgroundColor: !profile.equipped?.title ? colors.transparentPrimary : 'transparent'
+                                }}
+                            >
+                                <Text style={{ color: !profile.equipped?.title ? colors.primary : colors.textSecondary, fontSize: 11, fontWeight: 'bold' }}>NO TITLE</Text>
+                            </TouchableOpacity>
+                            {(profile.inventory || []).filter(id => id.startsWith('title_')).map(tid => {
+                                const item = InventoryService.getItem(tid);
+                                if (!item) return null;
+                                const isSelected = profile.equipped?.title === tid;
+                                return (
+                                    <TouchableOpacity 
+                                        key={tid}
+                                        onPress={async () => {
+                                            const next = { ...profile, equipped: { ...(profile.equipped || {}), title: tid } };
+                                            await StorageService.saveUserProfile(next);
+                                            setProfile(next);
+                                        }}
+                                        style={{
+                                            paddingHorizontal: 12,
+                                            paddingVertical: 6,
+                                            borderRadius: 16,
+                                            borderWidth: 1,
+                                            borderColor: isSelected ? colors.primary : colors.border,
+                                            backgroundColor: isSelected ? colors.transparentPrimary : 'transparent'
+                                        }}
+                                    >
+                                        <Text style={{ color: isSelected ? colors.primary : colors.textSecondary, fontSize: 11, fontWeight: 'bold' }}>{item.name.toUpperCase()}</Text>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </View>
+                    </ScrollView>
 
                     <View style={styles.modalButtons}>
                         <TouchableOpacity 
@@ -698,8 +771,8 @@ export default function ProfileScreen() {
                             <Text style={{ color: colors.primary, fontWeight: 'bold' }}>REGISTER</Text>
                         </TouchableOpacity>
                     </View>
-                </TouchableOpacity>
-            </TouchableOpacity>
+                </View>
+            </View>
         </Modal>
 
         {/* Inventory Modal */}
@@ -709,11 +782,12 @@ export default function ProfileScreen() {
             animationType="slide"
             onRequestClose={() => setIsInventoryModalVisible(false)}
         >
-            <TouchableOpacity 
-                activeOpacity={1} 
-                style={styles.modalOverlay} 
-                onPress={() => setIsInventoryModalVisible(false)}
-            >
+            <View style={styles.modalOverlay}>
+                <TouchableOpacity 
+                    activeOpacity={1} 
+                    style={StyleSheet.absoluteFill} 
+                    onPress={() => setIsInventoryModalVisible(false)} 
+                />
                 <View 
                     style={[styles.modalContent, { backgroundColor: colors.backgroundSecondary, borderColor: colors.accent || colors.primary, maxHeight: '85%' }]}
                 >
@@ -791,7 +865,7 @@ export default function ProfileScreen() {
                         <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 13, letterSpacing: 1 }}>CLOSE STASH</Text>
                     </TouchableOpacity>
                 </View>
-            </TouchableOpacity>
+            </View>
         </Modal>
 
         {/* Monarch's License Modal */}
@@ -812,7 +886,7 @@ export default function ProfileScreen() {
                                 <Text style={[styles.licenseLabel, { color: colors.textSecondary }]}>NAME</Text>
                                 <Text style={[styles.licenseValue, { color: colors.textPrimary, fontSize: 20 }]}>{profile.name}</Text>
                                 <Text style={[styles.licenseLabel, { color: colors.textSecondary, marginTop: 10 }]}>RANK</Text>
-                                <Text style={[styles.licenseValue, { color: colors.success, fontSize: 24, fontWeight: 'bold' }]}>{rank}-RANK</Text>
+                                <Text style={[styles.licenseValue, { color: colors.success, fontSize: 24, fontWeight: 'bold' }]}>{rank.toUpperCase()}</Text>
                             </View>
                         </View>
                         
@@ -922,11 +996,12 @@ export default function ProfileScreen() {
             animationType="slide"
             onRequestClose={() => setIsGuideModalVisible(false)}
         >
-            <TouchableOpacity 
-                activeOpacity={1} 
-                style={styles.modalOverlay} 
-                onPress={() => setIsGuideModalVisible(false)}
-            >
+            <View style={styles.modalOverlay}>
+                <TouchableOpacity 
+                    activeOpacity={1} 
+                    style={StyleSheet.absoluteFill} 
+                    onPress={() => setIsGuideModalVisible(false)} 
+                />
                 <View 
                     style={[styles.modalContent, { backgroundColor: colors.backgroundSecondary, borderColor: colors.primary, maxHeight: '85%' }]}
                 >
@@ -978,7 +1053,7 @@ export default function ProfileScreen() {
                         <Text style={{ color: '#000', fontWeight: 'bold' }}>I UNDERSTAND</Text>
                     </TouchableOpacity>
                 </View>
-            </TouchableOpacity>
+            </View>
         </Modal>
 
         <SystemActionModal 

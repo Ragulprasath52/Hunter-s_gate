@@ -116,7 +116,7 @@ export default function ProgressScreen() {
         const max = Math.max(1, ...raw);
         const norm = raw.map((v) => Math.round((v / max) * 100));
         return {
-            labels: ['Chst', 'Back', 'Legs', 'Arms', 'Shld'],
+            labels: ['Chst', 'Back', 'Legs', 'Arms', 'Shld', 'Core'],
             datasets: [{ data: norm }],
         };
     }, [workouts]);
@@ -138,25 +138,54 @@ export default function ProgressScreen() {
     const squat = bestLiftWithDate(workouts, 'Squat');
     const deadlift = bestLiftWithDate(workouts, 'Deadlift');
 
+    const [isSyncing, setIsSyncing] = useState(false);
+
     const saveBody = async () => {
         setActionModal({
             visible: true,
             title: 'BIO-DATA SYNC',
             message: 'Synchronize current physical evaluation parameters with the Hunter Registry?',
-            confirmText: 'SYNC ✦',
+            confirmText: isSyncing ? 'SYNCING...' : 'SYNC ✦',
             cancelText: 'ABORT',
             type: 'SYSTEM',
             onConfirm: async () => {
-                const next = await StorageService.saveBodyStats({
-                    bodyWeight, chest, waist, arms,
-                });
-                setProfile(next);
-                setActionModal(prev => ({ ...prev, visible: false }));
+                if (isSyncing) return;
+                setIsSyncing(true);
+                try {
+                    const next = await StorageService.saveBodyStats({
+                        bodyWeight, chest, waist, arms,
+                    });
+                    setProfile(next);
+                    setActionModal({
+                        visible: true,
+                        title: 'SYSTEM UPDATED',
+                        message: 'Physical parameters successfully registered in the Hunter Registry.',
+                        confirmText: 'OK',
+                        onConfirm: () => setActionModal(prev => ({ ...prev, visible: false })),
+                        type: 'SUCCESS'
+                    });
+                } catch (error) {
+                    console.error('Bio-sync failed:', error);
+                    setActionModal({
+                        visible: true,
+                        title: 'SYNC ERROR',
+                        message: 'Failed to reach the registry. Check your network connection.',
+                        confirmText: 'RETRY',
+                        onConfirm: () => setActionModal(prev => ({ ...prev, visible: false })),
+                        type: 'DANGER'
+                    });
+                } finally {
+                    setIsSyncing(false);
+                }
             }
         });
     };
 
-    const chartWidth = Math.min(screenW - SIZES.padding * 2, screenW - 32);
+    // SIZES.padding is the outer screen margin. 
+    // The card itself has a padding of 16.
+    // So interior width is screenW - (SIZES.padding * 2) - (16 * 2)
+    const cardInternalPadding = 32; // 16 * 2
+    const chartWidth = screenW - (SIZES.padding * 2) - cardInternalPadding - 8; // Extra 8 for safety margin
 
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>

@@ -24,11 +24,12 @@ export default function ProgressScreen() {
     const { colors } = useTheme();
     const insets = useSafeAreaInsets();
     const [workouts, setWorkouts] = useState([]);
-    const [, setProfile] = useState(null);
+    const [profile, setProfile] = useState(null);
     const [bodyWeight, setBodyWeight] = useState('');
     const [chest, setChest] = useState('');
     const [waist, setWaist] = useState('');
     const [arms, setArms] = useState('');
+    const [isSyncing, setIsSyncing] = useState(false);
     const [actionModal, setActionModal] = useState({
         visible: false,
         title: '',
@@ -88,7 +89,7 @@ export default function ProgressScreen() {
         return labels.map((lb, i) => ({ label: lb, vol: values[i] }));
     }, [workouts]);
 
-    const radarLabels = ['Chest', 'Back', 'Legs', 'Arms', 'Shoulders'];
+    const radarLabels = ['Chest', 'Back', 'Legs', 'Arms', 'Shoulders', 'Core'];
     const radarRaw = useMemo(() => muscleVolumeTotals(workouts), [workouts]);
     const radarPairs = useMemo(
         () => radarLabels.map((name, i) => ({ name, vol: radarRaw[i] || 0 })),
@@ -107,15 +108,38 @@ export default function ProgressScreen() {
             visible: true,
             title: 'BIO-DATA SYNC',
             message: 'Synchronize web command center biometric parameters with the Hunter Registry?',
-            confirmText: 'SYNC ✦',
+            confirmText: isSyncing ? 'SYNCING...' : 'SYNC ✦',
             cancelText: 'ABORT',
             type: 'SYSTEM',
             onConfirm: async () => {
-                const next = await StorageService.saveBodyStats({
-                    bodyWeight, chest, waist, arms,
-                });
-                setProfile(next);
-                setActionModal(prev => ({ ...prev, visible: false }));
+                if (isSyncing) return;
+                setIsSyncing(true);
+                try {
+                    const next = await StorageService.saveBodyStats({
+                        bodyWeight, chest, waist, arms,
+                    });
+                    setProfile(next);
+                    setActionModal({
+                        visible: true,
+                        title: 'SYSTEM UPDATED',
+                        message: 'Web-linked physical parameters successfully registered in the Hunter Registry.',
+                        confirmText: 'OK',
+                        onConfirm: () => setActionModal(prev => ({ ...prev, visible: false })),
+                        type: 'SUCCESS'
+                    });
+                } catch (error) {
+                    console.error('Bio-sync failed:', error);
+                    setActionModal({
+                        visible: true,
+                        title: 'SYNC ERROR',
+                        message: 'Failed to reach the registry from web command. Check your connection.',
+                        confirmText: 'RETRY',
+                        onConfirm: () => setActionModal(prev => ({ ...prev, visible: false })),
+                        type: 'DANGER'
+                    });
+                } finally {
+                    setIsSyncing(false);
+                }
             }
         });
     };
@@ -153,7 +177,7 @@ export default function ProgressScreen() {
                     ) : (
                         radarPairs.map((p) => (
                             <Text key={p.name} style={[styles.rowText, { color: colors.textPrimary }]}>
-                                {p.name}: {Math.round(p.vol)} lbs
+                                {p.name}: {Math.round(p.vol)} KG
                             </Text>
                         ))
                     )}
@@ -165,7 +189,7 @@ export default function ProgressScreen() {
                     <Animated.View style={[styles.scanLine, { backgroundColor: colors.primary, transform: [{ translateY: scanTranslateY }] }]} />
                     {barSummary.map((row) => (
                         <Text key={row.label} style={[styles.rowText, { color: colors.textPrimary }]}>
-                            {row.label}: {Math.round(row.vol)} lbs
+                            {row.label}: {Math.round(row.vol)} KG
                         </Text>
                     ))}
                 </View>

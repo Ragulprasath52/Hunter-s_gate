@@ -10,8 +10,11 @@ export default function SetInputRow({
     isCompleted, 
     previousData,
     isBodyweight,
+    isTimed,
+    duration,
     onUpdateWeight, 
     onUpdateReps, 
+    onUpdateDuration,
     onToggleComplete,
     onDelete 
 }) {
@@ -29,31 +32,33 @@ export default function SetInputRow({
                 </Text>
             </View>
 
-            <View style={styles.inputCol}>
-                {isBodyweight ? (
-                    <View style={[styles.input, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border, justifyContent: 'center' }]}>
-                        <Text style={{ color: colors.textSecondary, textAlign: 'center', fontSize: 10, fontWeight: 'bold' }}>BW</Text>
-                    </View>
-                ) : (
-                    <TextInput
-                        style={[
-                            styles.input, 
-                            { 
-                                backgroundColor: colors.background, 
-                                color: colors.primary,
-                                borderColor: isCompleted ? colors.success : colors.border
-                            }
-                        ]}
-                        value={weight}
-                        onChangeText={onUpdateWeight}
-                        placeholder="0"
-                        placeholderTextColor={colors.textSecondary}
-                        keyboardType="decimal-pad"
-                        selectTextOnFocus
-                        editable={!isCompleted}
-                    />
-                )}
-            </View>
+            {!isTimed && (
+                <View style={styles.inputCol}>
+                    {isBodyweight ? (
+                        <View style={[styles.input, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border, justifyContent: 'center' }]}>
+                            <Text style={{ color: colors.textSecondary, textAlign: 'center', fontSize: 10, fontWeight: 'bold' }}>BW</Text>
+                        </View>
+                    ) : (
+                        <TextInput
+                            style={[
+                                styles.input, 
+                                { 
+                                    backgroundColor: colors.background, 
+                                    color: colors.primary,
+                                    borderColor: isCompleted ? colors.success : colors.border
+                                }
+                            ]}
+                            value={weight}
+                            onChangeText={onUpdateWeight}
+                            placeholder="0"
+                            placeholderTextColor={colors.textSecondary}
+                            keyboardType="decimal-pad"
+                            selectTextOnFocus
+                            editable={!isCompleted}
+                        />
+                    )}
+                </View>
+            )}
 
             <View style={styles.inputCol}>
                 <TextInput
@@ -65,8 +70,8 @@ export default function SetInputRow({
                             borderColor: isCompleted ? colors.success : colors.border
                         }
                     ]}
-                    value={reps}
-                    onChangeText={onUpdateReps}
+                    value={isTimed ? duration : reps}
+                    onChangeText={isTimed ? onUpdateDuration : onUpdateReps}
                     placeholder="0"
                     placeholderTextColor={colors.textSecondary}
                     keyboardType="number-pad"
@@ -116,7 +121,7 @@ const styles = StyleSheet.create({
     },
     checkCol: {
         width: 32,
-        height: 32,
+        height: 36,
         borderRadius: 6,
         borderWidth: 1,
         justifyContent: 'center',
@@ -135,12 +140,19 @@ const styles = StyleSheet.create({
         fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
     },
     input: {
-        height: 32,
+        height: 36,
         borderRadius: 4,
         borderWidth: 1,
         textAlign: 'center',
         fontSize: 14,
         fontWeight: 'bold',
+        padding: 0,
+        paddingVertical: 0,
+        ...Platform.select({
+            android: {
+                includeFontPadding: false,
+            }
+        })
     },
     checkPlaceholder: {
         width: 14,

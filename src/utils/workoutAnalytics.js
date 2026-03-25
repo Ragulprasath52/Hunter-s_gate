@@ -93,44 +93,76 @@ export function bigThreeMaxByWeek(workouts, weeks = 10) {
 }
 
 const MUSCLE_BY_EXERCISE = {
-    'Bench Press': 'chest',
-    'Squat': 'legs',
-    Deadlift: 'legs',
-    'Barbell Row': 'back',
-    'Pull-ups': 'back',
-    'Dumbbell Curls': 'arms',
-    'Leg Press': 'legs',
-    'Chest Flies': 'chest',
-    'Overhead Press': 'shoulders',
-    'Lat Pulldown': 'back',
-    'Tricep Pushdown': 'arms',
+    // Falls back to these for old data
+    'Bench Press': { main: 'chest', sub: 'triceps' },
+    'Squat': { main: 'legs', sub: 'back' },
+    'Deadlift': { main: 'back', sub: 'legs' },
+    'Barbell Row': { main: 'back', sub: 'biceps' },
+    'Pull-ups': { main: 'back', sub: 'biceps' },
+    'Dumbbell Curls': { main: 'arms', sub: 'arms' },
+    'Leg Press': { main: 'legs', sub: 'legs' },
+    'Chest Flies': { main: 'chest', sub: 'shoulders' },
+    'Overhead Press': { main: 'shoulders', sub: 'triceps' },
+    'Lat Pulldown': { main: 'back', sub: 'biceps' },
+    'Tricep Pushdown': { main: 'arms', sub: 'triceps' },
+    'Pushups': { main: 'chest', sub: 'triceps' },
+    'Plank': { main: 'core', sub: 'back' },
+    'Lunges': { main: 'legs', sub: 'glutes' },
 };
 
+function maskMuscle(m) {
+    if (!m) return 'arms';
+    const low = m.toLowerCase();
+    if (low.includes('chest')) return 'chest';
+    if (low.includes('back')) return 'back';
+    if (low.includes('leg') || low.includes('glute')) return 'legs';
+    if (low.includes('arm') || low.includes('bicep') || low.includes('tricep')) return 'arms';
+    if (low.includes('shoulder')) return 'shoulders';
+    if (low.includes('core') || low.includes('abs')) return 'core';
+    if (low.includes('trap')) return 'back';
+    return 'arms'; // default
+}
+
 export function muscleVolumeTotals(workouts) {
-    const keys = ['chest', 'back', 'legs', 'arms', 'shoulders'];
+    const keys = ['chest', 'back', 'legs', 'arms', 'shoulders', 'core'];
     const totals = Object.fromEntries(keys.map((k) => [k, 0]));
+    
     for (const w of workouts) {
-        const m = MUSCLE_BY_EXERCISE[w.exercise] || 'arms';
-        totals[m] = (totals[m] || 0) + (Number(w.volume) || 0);
+        const volume = Number(w.volume) || 0;
+        
+        let rawMain = w.mainMuscle;
+        let rawSub = w.subMuscle;
+        
+        if (!rawMain) {
+            const entry = MUSCLE_BY_EXERCISE[w.exercise];
+            rawMain = entry?.main || 'arms';
+            rawSub = entry?.sub || rawMain;
+        }
+
+        const main = maskMuscle(rawMain);
+        const sub = maskMuscle(rawSub);
+
+        if (main === sub) {
+            totals[main] = (totals[main] || 0) + volume;
+        } else {
+            // Split 70% to main, 30% to sub
+            totals[main] = (totals[main] || 0) + (volume * 0.7);
+            if (totals[sub] !== undefined) {
+                totals[sub] = (totals[sub] || 0) + (volume * 0.3);
+            } else {
+                // If masked sub still not in totals (unlikely with mask), 
+                // just give it to main
+                totals[main] = (totals[main] || 0) + (volume * 0.3);
+            }
+        }
     }
     return keys.map((k) => totals[k] || 0);
 }
 
 export function getMuscleGroupForExercise(exercise) {
-    const map = {
-        'Bench Press': 'Chest',
-        'Squat': 'Legs',
-        Deadlift: 'Legs',
-        'Barbell Row': 'Back',
-        'Pull-ups': 'Back',
-        'Dumbbell Curls': 'Arms',
-        'Leg Press': 'Legs',
-        'Chest Flies': 'Chest',
-        'Overhead Press': 'Shoulders',
-        'Lat Pulldown': 'Back',
-        'Tricep Pushdown': 'Arms',
-    };
-    return map[exercise] || 'General';
+    const entry = MUSCLE_BY_EXERCISE[exercise];
+    const main = entry?.main || 'General';
+    return main.charAt(0).toUpperCase() + main.slice(1);
 }
 
 /** GitHub-style grid: rows = Mon–Sun, cols = weeks (left = older). Count workouts per day. */
